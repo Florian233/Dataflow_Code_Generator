@@ -5,6 +5,7 @@
 #include <algorithm>
 #include "Actor_Classification.hpp"
 #include "Config/debug.h"
+#include "Config/config.h"
 
 // return true if the merge was without conflicts, false it there was a conflict while merging
 static bool merge_maps(
@@ -61,7 +62,6 @@ static std::vector<std::string> find_actions(
 	return ret;
 }
 
-#ifdef DEBUG_CLASSIFICATION
 static void print_classification(Actor_Classification c) {
 	if (c == Actor_Classification::static_rate) {
 		std::cout << "Static";
@@ -92,9 +92,8 @@ static void print_actor_classification(
 	std::cout << std::endl;
 }
 
-#endif
-
 void IR::Actor::classify_actor(void) {
+	Config* c = c->getInstance();
 	if (fsm.size() == 0) {
 		bool static_in{ true };
 		bool static_out{ true };
@@ -152,9 +151,9 @@ void IR::Actor::classify_actor(void) {
 			output_classification = Actor_Classification::static_rate;
 		}
 
-#ifdef DEBUG_CLASSIFICATION
-		print_actor_classification(input_classification, output_classification, actor_name);
-#endif
+		if (c->get_verbose_classify()) {
+			print_actor_classification(input_classification, output_classification, actor_name);
+		}
 		return;
 	}
 
@@ -248,9 +247,9 @@ void IR::Actor::classify_actor(void) {
 			   This doesn't mean that this is the case for the complete FSM,
 			   but it has a cycle that doesn't end with the initial state
 			 */
-#ifdef DEBUG_CLASSIFICATION
-			print_actor_classification(input_classification, output_classification, actor_name);
-#endif
+			if (c->get_verbose_classify()) {
+				print_actor_classification(input_classification, output_classification, actor_name);
+			}
 			return;
 		}
 		for (auto it = state_next_map[state].begin(); it != state_next_map[state].end(); ++it) {
@@ -305,9 +304,9 @@ void IR::Actor::classify_actor(void) {
 
 	if (!cyclostatic_in && !cyclostatic_out) {
 		//classification not fulfilled already, bail out
-#ifdef DEBUG_CLASSIFICATION
-		print_actor_classification(input_classification, output_classification, actor_name);
-#endif
+		if (c->get_verbose_classify()) {
+			print_actor_classification(input_classification, output_classification, actor_name);
+		}
 		return;
 	}
 
@@ -366,7 +365,7 @@ void IR::Actor::classify_actor(void) {
 			output_classification = Actor_Classification::state_static;
 		}
 	}
-#ifdef DEBUG_CLASSIFICATION
-	print_actor_classification(input_classification, output_classification, actor_name);
-#endif
+	if (c->get_verbose_classify()) {
+		print_actor_classification(input_classification, output_classification, actor_name);
+	}
 }

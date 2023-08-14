@@ -82,7 +82,7 @@ the input is a completely valid CAL+XDF specification.
 
 **Optimization Phase 2**: Optimization that should be done after the mapping is computed, e.g. if it depends on the mapping for instance to perform actor merging.
 
-**Code Generation**: Code generation for the actors (class including functions, actions, variables and local scheduler), the main (initialize channels, actors, call their init methods and global scheduling), cmake, and buffer implementation. The generated actor code includes one class per actor variant and not one class per actor instance, this significantly reduces the generated code size. The actor variant with the least changes is named like the actor. Other versions get version specific names. Different versions might be generated with actor ports or actions are deleted or changed by optimization or for unconnected ports. For local scheduler generation the actor classification are taken into consideration. If the actor is static or static for each state the local scheduler fetches the tokens already and passes them as argument to the actions (functions generated for them). This simplifies guard condition computation.
+**Code Generation**: Code generation for the actors (class including functions, actions, variables and local scheduler), the main (initialize channels, actors, call their init methods and global scheduling), cmake, and buffer implementation. The generated actor code includes one class per actor variant and not one class per actor instance, this significantly reduces the generated code size. The actor variant with the least changes is named like the actor. Other versions get version specific names. Different versions might be generated with actor ports or actions are deleted or changed by optimization or for unconnected ports. For local scheduler generation the actor classification are taken into consideration. If the actor is static or static for each state the local scheduler fetches the tokens already and passes them as argument to the actions (functions generated for them). This simplifies guard condition computation. Currently, the generated code for actors consists of only one header per actor. Splitting the code into header and source files would make re-compilation of the generated project more efficient.
 	  
 
 ### Directory Structure
@@ -153,16 +153,20 @@ The code generator provides the following command line options:
 
 ### Mapping
 * -c \<number\> : Specifiy the number of cores to use. This shall determine the number of clusters/partitions created during the mapping process.
-* --map=(all|...)
-  * all: Map all actors instances to all cores. This is the default. This options doesn't lead to a proper mapping. Instead the generated global scheduling routines for each core can execute all actor instances. To ensure execution of an actor instance only once at a time atomics are used (only if more than one core is used). Atomics deacrease the performance significantly!
-  * ... Currently no further mapping techniques are implemented
+* --map=(all|lft|random)
+  * all: Map all actor instances to all cores. This is the default. This options doesn't lead to a proper mapping. Instead the generated global scheduling routines for each core can execute all actor instances. To ensure execution of an actor instance only once at a time atomics are used (only if more than one core is used). Atomics deacrease the performance significantly!
+  * random: Distribute actor instances round-robin amoung the cores, list of actor instances is not sorted, order unknown.
+  * lft: Different methods based on the last finish time of actor instances, can take weights into consideration.
 * --map_file \<file\> : Uses the mapping for file. Ignores -c and --map. The file has to contain an XML description of the partitioning in the following form: \<Mapping\> \<Cluster\> \<Node name="some_actor_instance_name"/\>...\</Cluster\>\<multiple cluster containing multiple nodes\>\</Mapping\>   
+* --output_nodes_file \<file\>: Uses the nodes defined in the file as output nodes of the network, this is where the computation of the last finish times starts. The file has to contain an XML description in the following form: \<Mapping\> \<Output\> \<Node name="some_actor_instance_name"\>...\</Output\>\</Mapping\>
+* --input_nodes_file \<file\>: Uses the nodes defined in the file as input nodes of the network, this is where the computation of the earliest start times starts. The file has to contain an XML description in the following form: \<Mapping\> \<Input\> \<Node name="some_actor_instance_name"\>...\</Input\>\</Mapping\>
+* --map_weights \<file\>: Uses the weights defined in the file as weights for the actor instances for mapping. The file has to contain an XML description in the following form: \<Mapping\> \<Weights\> \<Weight name="some_actor_instance_name" Value=X\>...\</Weights\>\</Mapping\>
 
 ### Scheduling
 * --topology_sort : Use topology sorting for the list of actor instances before generating the global scheduler. This might lead to less calls of local schedulers that return without peforming any firings of the corresponding actor instance. With a topologically sorted list for scheduling the actor instances might be executed in the order or the token flow.
-* --schedule=(non_preemptive|...)
+* --schedule=(non_preemptive|round_robin)
   * non_preemptive : Use non-preemptive scheduling. This is the default. Actor instances are executed as long as they can fire, only after all possible firings are done they return to global scheduling.
-  * ... Currently no other scheduling techniques are implemented
+  * round_robin: Use round-robin scheduling. Actor instances can only fire one action, then they return to the global scheduler.
 * --list_schedule : Use a list for scheduling instead of hard-coded order of local scheduler calls in the code. This produces more flexible code, but has no specific purpose.
 
 ### Optimizations

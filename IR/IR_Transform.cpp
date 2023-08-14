@@ -472,10 +472,10 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 }
 
 void IR::Actor::transform_IR(void) {
-
-#ifdef DEBUG_IR_TRANSFORMATION
-	printf("IR transformation of %s.\n", class_name.c_str());
-#endif
+	Config* c = c->getInstance();
+	if (c->get_verbose_ir_gen()) {
+		printf("IR transformation of %s.\n", class_name.c_str());
+	}
 
 	Tokenizer token_producer{code};
 	Token t = token_producer.get_next_Token();
@@ -543,51 +543,51 @@ void IR::Actor::transform_IR(void) {
 	}
 
 
-#ifdef DEBUG_IR_TRANSFORMATION
-	printf("Number of actions: %llu.\n", buffered_actions.size());
-	for (auto it = in_buffers.begin(); it != in_buffers.end(); ++it) {
-		printf("Input Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
-	}
-	for (auto it = out_buffers.begin(); it != out_buffers.end(); ++it) {
-		printf("Output Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
-	}
-	for (auto it = priorities.begin(); it != priorities.end(); ++it) {
-		printf("Priority: %s > %s;\n", it->action_high.c_str(), it->action_low.c_str());
-	}
-	if (!initial_state.empty()) {
-		printf("Initial state: %s\n", initial_state.c_str());
-	}
-	for (auto it = fsm.begin(); it != fsm.end(); ++it) {
-		printf("FSM: %s(%s) -> %s;\n", it->state.c_str(), it->action.c_str(), it->next_state.c_str());
-	}
-	for (auto it = actions.begin(); it != actions.end(); ++it) {
-		printf("Found action: %s, guard: %s\n", (*it)->get_name().c_str(), (*it)->get_guard().c_str());
-		for (auto i_it = (*it)->get_in_buffers().begin();
-				  i_it != (*it)->get_in_buffers().end();
-			      ++i_it) {
-			printf("Input buffer: %s, tokenrate: %d\n", i_it->buffer_name.c_str(), i_it->tokenrate);
+	if (c->get_verbose_ir_gen()) {
+		printf("Number of actions: %llu.\n", buffered_actions.size());
+		for (auto it = in_buffers.begin(); it != in_buffers.end(); ++it) {
+			printf("Input Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
 		}
-		for (auto o_it = (*it)->get_out_buffers().begin();
-			o_it != (*it)->get_out_buffers().end();
-			++o_it) {
-			printf("Output buffer: %s, tokenrate: %d\n", o_it->buffer_name.c_str(), o_it->tokenrate);
+		for (auto it = out_buffers.begin(); it != out_buffers.end(); ++it) {
+			printf("Output Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
 		}
-	}
+		for (auto it = priorities.begin(); it != priorities.end(); ++it) {
+			printf("Priority: %s > %s;\n", it->action_high.c_str(), it->action_low.c_str());
+		}
+		if (!initial_state.empty()) {
+			printf("Initial state: %s\n", initial_state.c_str());
+		}
+		for (auto it = fsm.begin(); it != fsm.end(); ++it) {
+			printf("FSM: %s(%s) -> %s;\n", it->state.c_str(), it->action.c_str(), it->next_state.c_str());
+		}
+		for (auto it = actions.begin(); it != actions.end(); ++it) {
+			printf("Found action: %s, guard: %s\n", (*it)->get_name().c_str(), (*it)->get_guard().c_str());
+			for (auto i_it = (*it)->get_in_buffers().begin();
+				i_it != (*it)->get_in_buffers().end();
+				++i_it) {
+				printf("Input buffer: %s, tokenrate: %d\n", i_it->buffer_name.c_str(), i_it->tokenrate);
+			}
+			for (auto o_it = (*it)->get_out_buffers().begin();
+				o_it != (*it)->get_out_buffers().end();
+				++o_it) {
+				printf("Output buffer: %s, tokenrate: %d\n", o_it->buffer_name.c_str(), o_it->tokenrate);
+			}
+		}
 
-	for (auto it = method_buffers.begin(); it != method_buffers.end(); ++it) {
-		it->print_buffer();
-	}
+		for (auto it = method_buffers.begin(); it != method_buffers.end(); ++it) {
+			it->print_buffer();
+		}
 
-	for (auto it = var_buffers.begin(); it != var_buffers.end(); ++it) {
-		it->print_buffer();
-	}
-	for (auto it = buffered_actions.begin(); it != buffered_actions.end(); ++it) {
-		it->print_buffer();
-	}
-	for (auto it = conversion_data.get_symbol_map().begin(); it != conversion_data.get_symbol_map().end(); ++it) {
-		std::cout << "Symbol: " << it->first << " Value: " << it->second << std::endl;
-	}
+		for (auto it = var_buffers.begin(); it != var_buffers.end(); ++it) {
+			it->print_buffer();
+		}
+		for (auto it = buffered_actions.begin(); it != buffered_actions.end(); ++it) {
+			it->print_buffer();
+		}
+		for (auto it = conversion_data.get_symbol_map().begin(); it != conversion_data.get_symbol_map().end(); ++it) {
+			std::cout << "Symbol: " << it->first << " Value: " << it->second << std::endl;
+		}
 
-	printf("IR transformation of %s done.\n", class_name.c_str());
-#endif
+		printf("IR transformation of %s done.\n", class_name.c_str());
+	}
 }

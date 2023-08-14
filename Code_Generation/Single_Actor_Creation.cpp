@@ -65,7 +65,7 @@ static std::string class_variable_generation(
 				//it is not used, skip
 				continue;
 			}
-			std::string type = "Channel<" + it->type + ">*";
+			std::string type = "Data_Channel<" + it->type + ">*";
 			constructor_parameter_name_type_map[it->buffer_name] = type;
 			ret.append("\t" + type + " " + it->buffer_name + ";\n");
 		}
@@ -80,7 +80,7 @@ static std::string class_variable_generation(
 				//it is not used, skip
 				continue;
 			}
-			std::string type = "Channel<" + it->type + ">*";
+			std::string type = "Data_Channel<" + it->type + ">*";
 			constructor_parameter_name_type_map[it->buffer_name] = type;
 			ret.append("\t" + type + " " + it->buffer_name + ";\n");
 		}
@@ -149,8 +149,13 @@ static std::string action_generation(
 			continue;
 		}
 		(*it)->get_action_buffer()->reset_buffer();
+		/* Cannot use input_channel_parameters for the action because the scheduler cannot handle this
+		 * right now properly. It will prefetch the tokens before checking whether sufficient output
+		 * channel space is available. If this is not the case the tokens are lost.
+		 * Hence, this might only work for SISO actors. Deactivate for now.
+		 */
 		ret += convert_action(*it, (*it)->get_action_buffer(), data,
-								actor->get_input_classification() != Actor_Classification::dynamic_rate, false,
+								false, false,
 								unused_in_channels, unused_out_channels, "\t");
 	}
 

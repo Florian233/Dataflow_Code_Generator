@@ -6,7 +6,7 @@
 #include <tuple>
 #include "String_Helper.h"
 
-static std::string non_preemptive(
+static std::string default_local(
 	std::map<std::string, std::vector<Scheduling::Channel_Schedule_Data> >& actions,
 	std::vector<IR::FSM_Entry>& fsm,
 	std::vector<IR::Priority_Entry>& priorities,
@@ -17,24 +17,29 @@ static std::string non_preemptive(
 	std::map<std::string, std::string>& action_guard,
 	std::map<std::string, std::string>& action_schedulingCondition_map,
 	std::map<std::string, std::string>& action_freeSpaceCondition_map,
-	std::map<std::string, std::string>& state_channel_access)
+	std::map<std::string, std::string>& state_channel_access,
+	bool round_robin)
 {
 	std::string output{ };
 	std::string local_prefix;
+	std::string buffered_prefix = prefix;
 	bool static_rate = (input_classification != Actor_Classification::dynamic_rate);
 	output.append(prefix + "void schedule(void) {\n");
 	output.append("#ifdef PRINT_FIRINGS\n");
 	output.append(prefix + "\tunsigned firings = 0;\n");
 	output.append("#endif\n");
-	output.append(prefix + "\tfor (;;) {\n");
+	if (!round_robin) {
+		output.append(prefix + "\tfor (;;) {\n");
+		prefix.append("\t");
+	}
 	if (!fsm.empty()) {
 		std::set<std::string> states = Scheduling::get_all_states(fsm);
 		for (auto it = states.begin(); it != states.end(); ++it) {
 			if (it == states.begin()) {
-				output.append(prefix + "\t\tif (state == FSM::" + *it + ") {\n");
+				output.append(prefix + "\tif (state == FSM::" + *it + ") {\n");
 			}
 			else {
-				output.append(prefix + "\t\telse if (state == FSM::" + *it + ") {\n");
+				output.append(prefix + "\telse if (state == FSM::" + *it + ") {\n");
 			}
 			//find actions that could be scheduled in this state
 			std::vector<std::string> schedulable_actions = find_schedulable_actions(*it, fsm, actions);
@@ -44,13 +49,13 @@ static std::string non_preemptive(
 			}
 			if (static_rate) {
 				std::string channel_prefetch = state_channel_access[*it];
-				replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t\t\t");
-				output.append(prefix + "\t\t\tif " + action_schedulingCondition_map[schedulable_actions.front()] + " {\n");
+				replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t\t");
+				output.append(prefix + "\t\tif (" + action_schedulingCondition_map[schedulable_actions.front()] + ") {\n");
 				output.append(channel_prefetch);
-				local_prefix = prefix + "\t\t\t\t";
+				local_prefix = prefix + "\t\t\t";
 			}
 			else {
-				local_prefix = prefix + "\t\t\t";
+				local_prefix = prefix + "\t\t";
 			}
 			//create condition test and scheduling for each schedulable action
 			for (auto action_it = schedulable_actions.begin();
@@ -58,8 +63,10 @@ static std::string non_preemptive(
 			{
 				std::string action_condition = action_guard[*action_it];
 				if (!static_rate) {
-					action_condition.append(" && ");
-					action_condition.append(action_schedulingCondition_map[*action_it]);
+					std::string tmp = action_schedulingCondition_map[*action_it];
+					tmp.append(" && ");
+					tmp.append(action_condition);
+					action_condition = tmp;
 				}
 				if (action_it == schedulable_actions.begin()) {
 					output.append(local_prefix + "if (" + action_condition + ") {\n");
@@ -85,23 +92,38 @@ static std::string non_preemptive(
 					output.append(local_prefix + "\t\tstate = FSM::" + Scheduling::find_next_state(*it, *action_it, fsm) + ";\n");
 					output.append(local_prefix + "\t}\n");
 					output.append(local_prefix + "\telse {\n");
-					output.append(local_prefix + "\t\tbreak;\n");
+					if (round_robin) {
+						output.append(local_prefix + "\t\treturn;\n");
+					}
+					else {
+						output.append(local_prefix + "\t\tbreak;\n");
+					}
 					output.append(local_prefix + "\t}\n");
 				}
 				output.append(local_prefix + "}\n");
 			}
 			output.append(local_prefix + "else {\n");
-			output.append(local_prefix + "\tbreak;\n");
+			if (round_robin) {
+				output.append(local_prefix + "\treturn;\n");
+			}
+			else {
+				output.append(local_prefix + "\tbreak;\n");
+			}
 			output.append(local_prefix + "}\n");
 
 			if (static_rate) {
-				output.append(prefix + "\t\t\t}\n");
-				output.append(prefix + "\t\t\telse {\n");
-				output.append(prefix + "\t\t\t\tbreak;\n");
-				output.append(prefix + "\t\t\t}\n");
+				output.append(prefix + "\t\t}\n");
+				output.append(prefix + "\t\telse {\n");
+				if (round_robin) {
+					output.append(prefix + "\t\t\treturn;\n");
+				}
+				else {
+					output.append(prefix + "\t\t\tbreak;\n");
+				}
+				output.append(prefix + "\t\t}\n");
 			}
 
-			output.append(prefix + "\t\t}\n");//close state checking if
+			output.append(prefix + "\t}\n");//close state checking if
 		}
 	}
 	else {
@@ -111,20 +133,22 @@ static std::string non_preemptive(
 		}
 		if (static_rate) {
 			// We only need to check size once
-			output.append(prefix + "\t\tif " + action_schedulingCondition_map[schedulable_actions.front()] + " {\n");
+			output.append(prefix + "\tif (" + action_schedulingCondition_map[schedulable_actions.front()] + ") {\n");
 			std::string channel_prefetch = state_channel_access[""];
-			replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t\t");
+			replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t");
 			output.append(channel_prefetch);
-			local_prefix = prefix + "\t\t\t";
+			local_prefix = prefix + "\t\t";
 		}
 		else {
-			local_prefix = prefix + "\t\t";
+			local_prefix = prefix + "\t";
 		}
 		for (auto it = schedulable_actions.begin(); it != schedulable_actions.end(); ++it) {
 			std::string action_condition = action_guard[*it];
 			if (!static_rate) {
-				action_condition.append(" && ");
-				action_condition.append(action_schedulingCondition_map[*it]);
+				std::string tmp = action_schedulingCondition_map[*it];
+				tmp.append(" && ");
+				tmp.append(action_condition);
+				action_condition = tmp;
 			}
 			if (it == schedulable_actions.begin()) {
 				output.append(local_prefix + "if (" + action_condition + ") {\n");
@@ -146,22 +170,40 @@ static std::string non_preemptive(
 				output.append("#endif\n");
 				output.append(local_prefix + "\t}\n");
 				output.append(local_prefix + "\telse {\n");
-				output.append(local_prefix + "\t\tbreak;\n");
+				if (round_robin) {
+					output.append(local_prefix + "\t\treturn;\n");
+				}
+				else {
+					output.append(local_prefix + "\t\tbreak;\n");
+				}
 				output.append(local_prefix + "\t}\n");
 			}
 			output.append(local_prefix + "}\n");
 		}
 		output.append(local_prefix + "else {\n");
-		output.append(local_prefix + "\tbreak;\n");
+		if (round_robin) {
+			output.append(local_prefix + "\treturn;\n");
+		}
+		else {
+			output.append(local_prefix + "\tbreak;\n");
+		}
 		output.append(local_prefix + "}\n");
 		if (static_rate) {
-			output.append(prefix + "\t\t}\n");
-			output.append(prefix + "\t\telse {\n");
-			output.append(prefix + "\t\t\tbreak;\n");
-			output.append(prefix + "\t\t}\n");
+			output.append(prefix + "\t}\n");
+			output.append(prefix + "\telse {\n");
+			if (round_robin) {
+				output.append(prefix + "\t\treturn;\n");
+			}
+			else {
+				output.append(prefix + "\t\tbreak;\n");
+			}
+			output.append(prefix + "\t}\n");
 		}
 	}
-	output.append(prefix + "\t}\n");//close for(;;) loop
+	if (!round_robin) {
+		prefix = buffered_prefix;
+		output.append(prefix + "\t}\n");//close for(;;) loop
+	}
 	output.append("#ifdef PRINT_FIRINGS\n");
 	output.append(prefix + "\tstd::cout << actor$name << \" fired \" << firings << \" times\" << std::endl;\n");
 	output.append("#endif\n");
@@ -180,14 +222,14 @@ static std::string guard_var_replacement(
 	remove_whitespaces(guard);
 
 	for (auto it = replacement_map.begin(); it != replacement_map.end(); ++it) {
-		replace_all_substrings(guard, it->first, it->second);
+		replace_variables(guard, it->first, it->second);
 	}
 
 	return guard;
 }
 
 /* Update the guard conditions of the actions and generate code to fetch tokens from channels.
- * In the static cases (also cylco-static etc.) code to fetch the tokens and store it in local
+ * In the static cases (also cyclo-static etc.) code to fetch the tokens and store it in local
  * variables is generated, the guard conditions are manipulated to use these local variables.
  * Otherwise the guard conditions are manipulated to use the prefetch functionality of the channel
  * to compute the guard condition.
@@ -203,7 +245,12 @@ static std::map<std::string, std::string> get_scheduler_channel_access(
 	// Map the channel read to local variable for each state if required (not in the dynamic case)
 	std::map<std::string, std::string> output;
 
-	if (input_classification == Actor_Classification::dynamic_rate) {
+	/* Only use this path for now, the other path has a bug, as it should fetch the 
+	 * the tokens only if sufficient output channel space is available.
+	 * Otherwise there must be some local buffering for the next call or some revert operation
+	 * on the channel to avoid losing the tokens.
+	 */
+	if (true || input_classification == Actor_Classification::dynamic_rate) {
 		// It is dynamic, hence, we must prefetch
 		for (auto action_it = actions.begin();
 			action_it != actions.end(); ++action_it)
@@ -249,6 +296,7 @@ static std::map<std::string, std::string> get_scheduler_channel_access(
 					}
 				}
 			}
+
 			std::string replaced_guard = guard_var_replacement(action_guard[action_it->first], replacement_map);
 #ifdef DEBUG_SCHEDULER_GENERATION
 			if ((replaced_guard != action_guard[action_it->first]) && !replaced_guard.empty()) {
@@ -515,17 +563,18 @@ std::string Scheduling::generate_local_scheduler(
 			}
 		}
 		if (action_schedulingCondition_map[action_it->first].empty()) {
-			action_schedulingCondition_map[action_it->first] = "(true)";
+			action_schedulingCondition_map[action_it->first] = "true";
 		}
 	}
 
-	if (c->get_non_preemptive()) {
-		return non_preemptive(actions, fsm, priorities,
+	if (c->get_sched_non_preemptive() || c->get_sched_rr()) {
+		return default_local(actions, fsm, priorities,
 			input_classification, output_classification, prefix,
 			action_guard,
 			action_schedulingCondition_map,
 			action_freeSpaceCondition_map,
-			state_channel_access);
+			state_channel_access,
+			c->get_sched_rr());
 	}
 	else {
 		throw Scheduler_Generation_Exception{ "No Scheduling Strategy defined." };

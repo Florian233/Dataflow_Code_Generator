@@ -73,8 +73,10 @@ static std::string basic_non_preemptive(
 				Scheduling::topology_sort(actors, dpn, maybe_sorted);
 			}
 			else {
-				for (auto it = actors.begin(); it != actors.end(); ++it) {
-					maybe_sorted.push_back(*it);
+				if (!Scheduling::sched_order_sort(actors, dpn, maybe_sorted)) {
+					for (auto it = actors.begin(); it != actors.end(); ++it) {
+						maybe_sorted.push_back(*it);
+					}
 				}
 			}
 			

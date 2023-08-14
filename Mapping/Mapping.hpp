@@ -19,4 +19,6 @@ namespace Mapping {
 	 */
 	void read_mapping(IR::Dataflow_Network* dpn, Mapping_Data* data, std::string path);
 
+	void generate_level_based_mapping(IR::Dataflow_Network* dpn, Mapping_Data* data);
+
 };

@@ -72,7 +72,7 @@ static std::string generate_channels(
 				"Types of " + it->get_source()->get_name() + "." + it->get_src_port()
 				+ " and " + it->get_sink()->get_name() + "." + it->get_dst_port() + " don't match."};
 		}
-		result.append("Channel<" + typeSource + "> *" + name + "; \n");
+		result.append("Data_Channel<" + typeSource + "> *" + name + "; \n");
 		channel_type_map[name] = typeSource;
 		channel_size_map[name] = std::to_string(it->get_specified_size());
 

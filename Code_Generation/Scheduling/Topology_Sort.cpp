@@ -10,7 +10,7 @@
 // The deleted flag is ignored as it doesn't matter, it is just a bit more computation time here.
 // Actor composition: We rely on the fact the the network is not changed, only cluster ids are set in
 // the actor instances. This way we can still find the init actors easily and avoid adding cycles by merging/clustering.
-void find_starting_point(
+static void find_starting_point(
 	std::vector<IR::Actor_Instance*>& actors,
 	std::vector<IR::Actor_Instance*>& process_list,
 	std::set<IR::Actor_Instance*>& unprocessed_list)
@@ -33,6 +33,19 @@ void find_starting_point(
 	}
 }
 
+static bool all_predecessors_covered(
+	IR::Actor_Instance* inst,
+	std::vector<std::string>& sorted_actors)
+{
+	for (auto it = inst->get_in_edges().begin(); it != inst->get_in_edges().end(); ++it) {
+		auto x = std::find(sorted_actors.begin(), sorted_actors.end(), (*it)->get_source()->get_name());
+		if (x == sorted_actors.end()) {
+			return false;
+		}
+	}
+	return true;
+}
+
 void Scheduling::topology_sort(
 	std::set<std::string>& actors,
 	IR::Dataflow_Network* dpn,
@@ -43,11 +56,7 @@ void Scheduling::topology_sort(
 	unprocessed_list.insert(dpn->get_actor_instances().begin(), dpn->get_actor_instances().end());
 	find_starting_point(dpn->get_actor_instances(), process_list, unprocessed_list);
 
-	size_t found, overall;
-	found = 0;
-	overall = actors.size();
-
-	while (found < overall) {
+	while (!process_list.empty()) {
 		IR::Actor_Instance* actor = *process_list.begin();
 
 		std::string name;
@@ -70,17 +79,17 @@ void Scheduling::topology_sort(
 				sorted_actors.erase(x);
 			}
 			sorted_actors.push_back(name);
-
-			++found;
 		}
 
 		for (auto it = actor->get_out_edges().begin();
 			it != actor->get_out_edges().end(); ++it)
 		{
 			IR::Actor_Instance* a = (*it)->get_sink();
-			if (unprocessed_list.find(a) != unprocessed_list.end()) {
-				// We haven't seen this actor instance yet, add it to the list to be processed
+
+			if (all_predecessors_covered(a, sorted_actors) || process_list.empty()) {
 				process_list.push_back(a);
+			}
+			if (unprocessed_list.find(a) != unprocessed_list.end()) {
 				unprocessed_list.erase(a);
 			}
 		}
@@ -92,12 +101,6 @@ void Scheduling::topology_sort(
 			// simply add some node of the unprocessed_list to the process_list and continue
 			process_list.push_back(*unprocessed_list.begin());
 			unprocessed_list.erase(unprocessed_list.begin());
-		}
-
-		//just a sanity check...
-		if (process_list.empty() && unprocessed_list.empty() && (found < overall)) {
-			printf("Error: Topology sorting failed, actors in list are not in the network.\n");
-			exit(5);
 		}
 	}
 }

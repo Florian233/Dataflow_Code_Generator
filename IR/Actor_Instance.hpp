@@ -21,7 +21,11 @@ namespace IR {
 		bool deleted{ false };
 
 		/* Mapping of this actor instance of the core that shall execute this instance. */
-		unsigned mapping{ 0 };
+		unsigned mapping{ 111 };
+
+		/* Scheduling order of this node for the given mapping, this might be the result of the mapping ops */
+		/* -1 indicated that no scheduling order is set, sched_order numbers can be sorted but need not be unique nor contiguous. */
+		int sched_order = -1;
 
 		/* Might be used during compositactor creation to cluster the instances. */
 		unsigned cluster_id{ 0 };
@@ -169,6 +173,14 @@ namespace IR {
 		void update_conversion_data(void) {
 			conversion_data = actor->get_conversion_data();
 			use_instance_data = true;
+		}
+
+		int get_sched_order(void) {
+			return sched_order;
+		}
+
+		void set_sched_order(int s) {
+			sched_order = s;
 		}
 	};
 };

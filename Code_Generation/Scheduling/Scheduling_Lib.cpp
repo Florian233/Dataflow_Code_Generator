@@ -1,4 +1,5 @@
 #include "Scheduling_Lib.hpp"
+#include <algorithm>
 
 void Scheduling::find_actors_for_core(
 	unsigned core,
@@ -114,3 +115,36 @@ std::string Scheduling::get_action_in_parameters(
 	return output;
 }
 
+class Sched_Order_Sort {
+	std::map<std::string, int>& sched_order_map;
+public:
+	Sched_Order_Sort(std::map<std::string, int>& a) : sched_order_map{ a } {};
+
+	bool operator()(std::string a, std::string b) const {
+		// Actor instances with large levels first in the list
+		return sched_order_map[a] > sched_order_map[b];
+	}
+};
+
+bool Scheduling::sched_order_sort(
+	std::set<std::string>& actors,
+	IR::Dataflow_Network* dpn,
+	std::vector<std::string>& sorted_actors)
+{
+	std::map<std::string, int> sched_order_map;
+
+	for (auto it = dpn->get_actor_instances().begin(); it != dpn->get_actor_instances().end(); ++it) {
+		if ((*it)->get_sched_order() == -1) {
+			return false;
+		}
+		sched_order_map[(*it)->get_name()] = (*it)->get_sched_order();
+	}
+
+	std::vector<std::string> tmp(actors.begin(), actors.end());
+
+	std::sort(tmp.begin(), tmp.end(), Sched_Order_Sort{ sched_order_map });
+
+	sorted_actors.swap(tmp);
+
+	return true;
+}

@@ -108,4 +108,11 @@ namespace Scheduling {
 		}
 	};
 
+	/* Sort Actor Instances in actors accordingly to the scheduling order specified in the actor instances.
+	 * Function returns the result in sorted_actors parameter and returns true if sched_order sorting was possible.
+	 */
+	bool sched_order_sort(
+			std::set<std::string>& actors,
+			IR::Dataflow_Network *dpn,
+			std::vector<std::string>& sorted_actors);
 }
