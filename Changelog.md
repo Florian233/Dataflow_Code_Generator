@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2
+
+### Added
+ * Added a flag to limit the local scheduler loop iterations
+ * Added a flag to statically allocate actors and channels
+ * Added a flag to use optimized local scheduling by fetching the channel sizes and once and using internal bookkeeping instead of reading them during every iteration of the local scheduler.
+
+### Changed
+ * Default channel size is not used as define
+ * Superflous "true &&" and "&& true" are not added to the local scheduler functions
+
 ## 1.1
 
 ### Added

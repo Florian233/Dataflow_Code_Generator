@@ -29,6 +29,7 @@ void parse_command_line_input(int argc, char* argv[]) {
 				"	-n <file>          Specify the top network that shall be converted.\n"
 				"	--orcc			   ORCC compatibility, required to use ORCC projects.\n"
 				"   --cmake            Generate CMake File for the generated code.\n"
+				"   --static_alloc      Make allocations static, don't use new operator.\n"
 				"\nCommunication Channels:\n"
 				"	-s <number>        Specify the default size of the FIFOs.\n"
 				"\nOpenMP:\n"
@@ -55,8 +56,10 @@ void parse_command_line_input(int argc, char* argv[]) {
 				"                 non_preemtive: Use non-preemptive scheduling strategy (default).\n"
 				"                 round_robin: Use round-robin scheduling strategy.\n"
 				"   --list_schedule    Use a list for scheduling instead of hard-coded scheduler.\n"
+				"   --bound_sched <number>      Use bound loops for local scheduling with given number of tries.\n"
 				"\nOptimizations:\n"
 				"	--prune_unconnected Remove unconnected channels from actors, otherwise they are set to NULL.\n"
+				"   --opt_sched         Use optimized local scheduling.\n"
 				"\nVerbosity:\n"
 				"   --verbose=(all, reader, ir, classify, opt1, opt2, map, code-gen)";
 			exit(0);
@@ -81,6 +84,9 @@ void parse_command_line_input(int argc, char* argv[]) {
 		}
 		else if (strcmp(argv[i], "--cmake") == 0) {
 			c->set_cmake();
+		}
+		else if (strcmp(argv[i], "--static_alloc") == 0) {
+			c->set_static_alloc();
 		}
 		else if (strcmp(argv[i], "--map_file") == 0) {
 			c->set_mapping_file(argv[++i]);
@@ -178,11 +184,17 @@ void parse_command_line_input(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "--topology_sort") == 0) {
 			c->set_topology_sort();
 		}
+		else if (strcmp(argv[i], "--bound_sched") == 0) {
+			c->set_bound_local_sched_loops(static_cast<unsigned int>(atoi(argv[++i])));
+		}
 		else if (strcmp(argv[i], "--omp_tasking") == 0) {
 			c->set_omp_tasking();
 		}
 		else if (strcmp(argv[i], "--prune_unconnected") == 0) {
 			c->set_prune_disconnected();
+		}
+		else if (strcmp(argv[i], "--opt_sched") == 0) {
+			c->set_optimize_scheduling();
 		}
 		else if (strncmp(argv[i], "--verbose=", 10) == 0) {
 			std::string lvl{argv[i] + 10};

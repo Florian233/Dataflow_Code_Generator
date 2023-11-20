@@ -15,6 +15,7 @@ class Config {
     unsigned int cores;
     bool orcc_compat{ false };
     bool cmake{ false };
+    bool static_alloc{ false };
 
     // Mapping strategies
     bool mapping_all_to_all{ false };
@@ -41,12 +42,15 @@ class Config {
     bool non_preemptive{ false };
     bool list_scheduling{ false };
     bool rr_scheduling{ false };
+    unsigned local_sched_loops{ 0 };
+    bool limit_local_sched_loops{ false };
 
     //OpenMP
     bool omp_tasking{ false };
 
     //Optimization
     bool prune_disconnected{ false };
+    bool optimize_scheduling{ false };
 
     //verbose
     bool verbose_read{ false };
@@ -114,6 +118,14 @@ public:
         this->cores = n;
     }
 
+    void set_static_alloc(void) {
+        this->static_alloc = true;
+    }
+
+    bool get_static_alloc(void) {
+        return this->static_alloc;
+    }
+
     void set_mapping_strategy_all_to_all(void) {
         if (mapping_from_file != true) {
             mapping_all_to_all = true;
@@ -162,12 +174,32 @@ public:
         return rr_scheduling;
     }
 
+    void set_bound_local_sched_loops(unsigned n) {
+        local_sched_loops = n;
+        limit_local_sched_loops = true;
+    }
+
+    bool get_bound_local_sched_loops(void) {
+        return limit_local_sched_loops;
+    }
+    unsigned get_local_sched_loop_num(void) {
+        return local_sched_loops;
+    }
+
     void set_prune_disconnected(void) {
         prune_disconnected = true;
     }
 
     bool get_prune_disconnected(void) {
         return prune_disconnected;
+    }
+
+    void set_optimize_scheduling(void) {
+        optimize_scheduling = true;
+    }
+
+    bool get_optimize_scheduling(void) {
+        return optimize_scheduling;
     }
 
     void set_list_scheduling(void) {

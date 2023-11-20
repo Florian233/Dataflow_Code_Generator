@@ -32,6 +32,53 @@ static std::string find_channel_type(
 	throw Code_Generation::Code_Generation_Exception{ "Cannot find type for port." };
 }
 
+static std::string generate_actor_constructor_parameters(
+	std::string name,
+	Actor_Conversion_Data *data,
+	bool static_alloc)
+{
+	std::string result;
+
+	result.append("\"" + name + "\"");
+	for (auto param_it = data->get_parameter_order().begin();
+		param_it != data->get_parameter_order().end(); ++param_it)
+	{
+		result.append(", ");
+		if (actorport_channel_map.contains(name + "_" + *param_it)) {
+			if (static_alloc) {
+				result.append("&");
+			}
+			result.append(actorport_channel_map[name + "_" + *param_it]);
+		}
+		else if (actorname_instance_map.contains(name)) {
+			//only true for non-merged actor instances
+			IR::Actor_Instance* instance = actorname_instance_map[name];
+			if (instance->get_parameters().contains(*param_it)) {
+				result.append(actorname_instance_map[name]->get_parameters()[*param_it]);
+			}
+			else if (instance->get_conversion_data().get_default_parameter_map().contains(*param_it)) {
+				result.append(instance->get_conversion_data().get_default_parameter_map()[*param_it]);
+			}
+			else {
+				if (instance->is_port(*param_it)) {
+					result.append("nullptr");
+				}
+				else {
+					// No Parameter value in the network, no default parameter = bug
+					throw Code_Generation::Code_Generation_Exception{ "No Parameter value given for " + name + " parameter: " + *param_it };
+				}
+			}
+		}
+		else {
+			//something is wrong here, this cannot happen
+			std::cout << "ERROR: Parameter insertion for actor constructor failed!" << std::endl;
+			exit(6);
+		}
+
+	}
+	return result;
+}
+
 static std::string generate_channels(
 	IR::Dataflow_Network* dpn,
 	Optimization::Optimization_Data_Phase1* opt_data1,
@@ -39,6 +86,7 @@ static std::string generate_channels(
 	Mapping::Mapping_Data* map_data)
 {
 	std::string result;
+	Config* c = c->getInstance();
 	for (auto it = dpn->get_edges().begin();
 		it != dpn->get_edges().end(); ++it)
 	{
@@ -72,9 +120,23 @@ static std::string generate_channels(
 				"Types of " + it->get_source()->get_name() + "." + it->get_src_port()
 				+ " and " + it->get_sink()->get_name() + "." + it->get_dst_port() + " don't match."};
 		}
-		result.append("Data_Channel<" + typeSource + "> *" + name + "; \n");
+		if (c->get_static_alloc()) {
+			result.append("Data_Channel<" + typeSource + "> " + name);
+		}
+		else {
+			result.append("Data_Channel<" + typeSource + "> *" + name + "; \n");
+		}
 		channel_type_map[name] = typeSource;
-		channel_size_map[name] = std::to_string(it->get_specified_size());
+		if (it->get_specified_size() == c->get_FIFO_size()) {
+			channel_size_map[name] = "CHANNEL_SIZE";
+		}
+		else {
+			channel_size_map[name] = std::to_string(it->get_specified_size());
+		}
+
+		if (c->get_static_alloc()) {
+			result.append("{" + channel_size_map[name] + "};\n");
+		}
 
 		actorport_channel_map[it->get_source()->get_name() + "_" + it->get_src_port()] = name;
 		actorport_channel_map[it->get_sink()->get_name() + "_" + it->get_dst_port()] = name;
@@ -90,6 +152,7 @@ static std::string generate_actor_instances(
 	Mapping::Mapping_Data* map_data)
 {
 	std::string result;
+	Config* c = c->getInstance();
 
 	for (auto it = dpn->get_actor_instances().begin();
 		it != dpn->get_actor_instances().end(); ++it)
@@ -102,11 +165,22 @@ static std::string generate_actor_instances(
 		}
 
 		std::string t = (*it)->get_conversion_data().get_class_name();
-		t.append("* ");
-		t.append((*it)->get_name());
-		result.append(t + ";\n");
+		if (!c->get_static_alloc()) {
+			t.append("*");
+		}
+		t.append(" " + (*it)->get_name());
+
+		// Must happen before the constructor parameters are generated!
 		actor_data_map[(*it)->get_name()] = (*it)->get_conversion_data_ptr();
 		actorname_instance_map[(*it)->get_name()] = (*it);
+
+		if (c->get_static_alloc()) {
+			t.append("{");
+			t.append(generate_actor_constructor_parameters((*it)->get_name(), (*it)->get_conversion_data_ptr(), true));
+			t.append("}");
+		}
+
+		result.append(t + ";\n");
 	}
 
 	for (auto it = dpn->get_composit_actors().begin();
@@ -136,54 +210,27 @@ static std::string generate_main(
 		result.append("\tparse_command_line_input(argc, argv);\n");
 	}
 
-	//initialize channels
-	for (auto it = channel_impl_map.begin(); it != channel_impl_map.end(); ++it) {
-		std::string t = it->first + " = new " + it->second + "<" + channel_type_map[it->first]
-			+ ">(" + channel_size_map[it->first] + ");";
-		result.append("\t" + t + "\n");
-	}
 
-	//initialize actor instances and call their init function
-	for (auto it = actor_data_map.begin(); it != actor_data_map.end(); ++it) {
-		result.append("\t" + it->first + " = new ");
-		result.append(it->second->get_class_name() + "(");
-		result.append("\"" + it->first + "\"");
-		for (auto param_it = it->second->get_parameter_order().begin();
-			param_it != it->second->get_parameter_order().end(); ++param_it)
-		{
-			result.append(", ");
-			if (actorport_channel_map.contains(it->first + "_" + *param_it)) {
-				result.append(actorport_channel_map[it->first + "_" + *param_it]);
-			}
-			else if (actorname_instance_map.contains(it->first)) {
-				//only true for non-merged actor instances
-				IR::Actor_Instance* instance = actorname_instance_map[it->first];
-				if (instance->get_parameters().contains(*param_it)) {
-					result.append(actorname_instance_map[it->first]->get_parameters()[*param_it]);
-				}
-				else if (instance->get_conversion_data().get_default_parameter_map().contains(*param_it)) {
-					result.append(instance->get_conversion_data().get_default_parameter_map()[*param_it]);
-				}
-				else {
-					if (instance->is_port(*param_it)) {
-						result.append("nullptr");
-					}
-					else {
-						// No Parameter value in the network, no default parameter = bug
-						throw Code_Generation::Code_Generation_Exception{ "No Parameter value given for " + it->first + " parameter: " + *param_it };
-					}
-				}
-			}
-			else {
-				//something is wrong here, this cannot happen
-				std::cout << "ERROR: Parameter insertion for actor constructor failed!" << std::endl;
-				exit(6);
-			}
+	if (!c->get_static_alloc()) {
+		//initialize channels
+		for (auto it = channel_impl_map.begin(); it != channel_impl_map.end(); ++it) {
 
+			std::string t = it->first + " = new " + it->second + "<" + channel_type_map[it->first]
+				+ ">(" + channel_size_map[it->first] + ");";
+			result.append("\t" + t + "\n");
 		}
-		result.append(");\n");
-		result.append("\t" + it->first + "->init();\n");
+
+
+		//initialize actor instances and call their init function
+		for (auto it = actor_data_map.begin(); it != actor_data_map.end(); ++it) {
+			result.append("\t" + it->first + " = new ");
+			result.append(it->second->get_class_name() + "(");
+			result.append(generate_actor_constructor_parameters(it->first, it->second, false));
+			result.append(");\n");
+			result.append("\t" + it->first + "->init();\n");
+		}
 	}
+
 	//call schedulers
 	if (c->get_omp_tasking()) {
 		result.append("#pragma omp parallel default(shared)\n");
@@ -234,6 +281,7 @@ void Code_Generation::generate_core(
 		code.append("#include <vector>\n");
 	}
 
+	code.append("\n#define CHANNEL_SIZE " + std::to_string(c->get_FIFO_size()) + "\n");
 	code.append("\n//#define PRINT_FIRINGS\n\n");
 
 	code.append(include_code);

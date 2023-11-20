@@ -144,6 +144,7 @@ The code generator provides the following command line options:
 * -n \<file\> : Specifiy the top network that shall be converted to C++
 * --orcc : Add ORCC compatibility, the generated code can parse the command lines and provides the options.h header that is required by the majority of the native code. This code is copied from ORCC generated code. It allows to use the ORCC demo applications, e.g. for testing.
 * --cmake : Generates a simple CMake file to build the generated project. Additional files, e.g. required to fulfill the @native references must be added manually!
+* --static_alloc : Allocate channels and actions in the main statically and avoid usage of the new operator
 
 ### Communication Channels
 * -s \<number\> : The default size of the buffers. This size is used if no optimization step determines another size or the size of the channel is given in the XDF file.
@@ -168,9 +169,11 @@ The code generator provides the following command line options:
   * non_preemptive : Use non-preemptive scheduling. This is the default. Actor instances are executed as long as they can fire, only after all possible firings are done they return to global scheduling.
   * round_robin: Use round-robin scheduling. Actor instances can only fire one action, then they return to the global scheduler.
 * --list_schedule : Use a list for scheduling instead of hard-coded order of local scheduler calls in the code. This produces more flexible code, but has no specific purpose.
+* --bound_sched \<number\>: Execute the local scheduler a bounded number of times at maximum before returning.
 
 ### Optimizations
 * --prune_unconnected : Remove unconnected channels from actors instances and generate separate code for them. Otherwise the unconnected channels are set to nullptr for the constructor parameters. This feature is rather experimental and not properly tested! Reading tokens from ports without an attached channel are replaced by using variables initalized with zero or uninitialized arrays.
+* --opt_sched : Fetch channel sizes before entering the local scheduler loop and use this values for scheduling. This avoids reading the channel sizes during each scheduler iteration, in the worst-case several times.
 
 ## Future Work
 * Implementation of Actor Merging

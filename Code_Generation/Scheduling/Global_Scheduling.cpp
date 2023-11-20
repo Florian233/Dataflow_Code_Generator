@@ -50,7 +50,12 @@ static std::string basic_non_preemptive(
 		result.append("\twhile (1) {\n");
 		for (auto it = actors.begin(); it != actors.end(); ++it) {
 			result.append("\t\tif(!" + *it + "_lock.test_and_set()) {\n");
-			result.append("\t\t\t" + *it + "->schedule();\n");
+			if (c->get_static_alloc()) {
+				result.append("\t\t\t" + *it + ".schedule();\n");
+			}
+			else {
+				result.append("\t\t\t" + *it + "->schedule();\n");
+			}
 			result.append("\t\t\t" + *it + "_lock.clear();\n");
 			result.append("\t\t}\n");
 		}
@@ -82,7 +87,12 @@ static std::string basic_non_preemptive(
 			
 			if (c->get_list_scheduling()) {
 				for (auto it = maybe_sorted.begin(); it != maybe_sorted.end(); ++it) {
-					result.append("\tcore" + std::to_string(core) + "_actors.push_back(" + *it + ");\n");
+					if (c->get_static_alloc()) {
+						result.append("\tcore" + std::to_string(core) + "_actors.push_back(&" + *it + ");\n");
+					}
+					else {
+						result.append("\tcore" + std::to_string(core) + "_actors.push_back(" + *it + ");\n");
+					}
 				}
 			}
 
@@ -94,7 +104,12 @@ static std::string basic_non_preemptive(
 			}
 			else {
 				for (auto it = maybe_sorted.begin(); it != maybe_sorted.end(); ++it) {
-					result.append("\t\t" + *it + "->schedule();\n");
+					if (c->get_static_alloc()) {
+						result.append("\t\t" + *it + ".schedule();\n");
+					}
+					else {
+						result.append("\t\t" + *it + "->schedule();\n");
+					}
 				}
 			}
 
