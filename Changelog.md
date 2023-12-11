@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+### Added
+ * No additions, only minor version for bug fixes
+ 
+### Changed
+ * Fixed a bug that lead to missing imported variables etc. when using more than one import in an actor
+ * Added a missing include to the generated channel implementation
+ * Added std::to_string for println parameters that are not strings
+
 ## 1.2
 
 ### Added

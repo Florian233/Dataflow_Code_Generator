@@ -280,6 +280,7 @@ std::string Code_Generation::generate_actor_code(
 
 	code.append("#pragma once\n");
 	code.append("#include <iostream>\n");
+	code.append("#include <string>\n");
 	code.append("#include \"Channel.hpp\"\n");
 	code.append("#include \"Actor.hpp\"\n");
 	if (c->get_orcc_compat()) {

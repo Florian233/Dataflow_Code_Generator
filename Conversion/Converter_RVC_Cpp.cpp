@@ -97,7 +97,15 @@ namespace Converter_RVC_Cpp {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					output.append(t.str);
+					if (println) {
+						// it is not a string, hence, we should add std::to_string for printing, just to be safe
+						output.append("std::to_string(");
+						output.append(t.str);
+						output.append(")");
+					}
+					else {
+						output.append(t.str);
+					}
 					something_to_print = true;
 					t = token_producer.get_next_Token();
 				}

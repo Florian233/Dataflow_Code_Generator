@@ -10,6 +10,7 @@
 
 std::string data_channel =
 	"#pragma once\n\n"
+    "#include <cstdlib>\n\n"
     "template<typename T>\n"
     "class Channel {\n"
     "protected:\n"
