@@ -466,6 +466,7 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 				path_to_import_file.clear();
 				symbol.clear();
 				path_to_import_file.append(c->get_source_dir());
+				previous_token.clear();
 			}
 		}
 	}
