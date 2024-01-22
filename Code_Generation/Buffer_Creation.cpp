@@ -241,9 +241,9 @@ void Code_Generation::generate_channel_code(
 
 	std::string path{ c->get_target_dir() };
 
-	std::ofstream output_file{ path + "\\Channel.hpp"};
+	std::ofstream output_file{ path + "/Channel.hpp"};
 	if (output_file.bad()) {
-		throw Code_Generation_Exception{ "Cannot open the file " + path + "\\Channel.hpp" };
+		throw Code_Generation_Exception{ "Cannot open the file " + path + "/Channel.hpp" };
 	}
 	output_file << data_channel;
 

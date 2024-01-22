@@ -1,8 +1,8 @@
 #pragma once
 
-#include "actor_instance.hpp"
-#include "edge.hpp"
-#include "actor.hpp"
+#include "Actor_Instance.hpp"
+#include "Edge.hpp"
+#include "Actor.hpp"
 #include <vector>
 #include <map>
 
