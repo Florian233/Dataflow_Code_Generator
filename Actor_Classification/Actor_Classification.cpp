@@ -1,4 +1,4 @@
-#include "IR/actor.hpp"
+#include "IR/Actor.hpp"
 #include <vector>
 #include <tuple>
 #include <map>

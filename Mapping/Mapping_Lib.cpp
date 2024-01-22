@@ -1,6 +1,7 @@
 #include "Mapping_Lib.hpp"
 #include "rapidxml-1.13/rapidxml.hpp"
 #include <string>
+#include <cstring>
 using namespace rapidxml;
 
 static unsigned weight_for_instance(
@@ -115,7 +116,8 @@ unsigned Mapping::read_actor_weights(
 		Top_network_buffer << network_file.rdbuf();
 		std::string str_to_parse = Top_network_buffer.str();
 		char* buffer = new char[str_to_parse.size() + 1];
-		strcpy_s(buffer, str_to_parse.size() + 1, str_to_parse.c_str());
+        std::size_t length = str_to_parse.copy(buffer,str_to_parse.size() + 1);
+        buffer[length]='\0';
 		doc->parse<0>(buffer);
 	}
 
@@ -276,7 +278,8 @@ void Mapping::read_output_nodes(
 		Top_network_buffer << network_file.rdbuf();
 		std::string str_to_parse = Top_network_buffer.str();
 		char* buffer = new char[str_to_parse.size() + 1];
-		strcpy_s(buffer, str_to_parse.size() + 1, str_to_parse.c_str());
+        std::size_t length = str_to_parse.copy(buffer,str_to_parse.size() + 1);
+        buffer[length]='\0';
 		doc->parse<0>(buffer);
 	}
 
@@ -396,7 +399,8 @@ void Mapping::read_input_nodes(
 		Top_network_buffer << network_file.rdbuf();
 		std::string str_to_parse = Top_network_buffer.str();
 		char* buffer = new char[str_to_parse.size() + 1];
-		strcpy_s(buffer, str_to_parse.size() + 1, str_to_parse.c_str());
+        std::size_t length = str_to_parse.copy(buffer,str_to_parse.size() + 1);
+        buffer[length]='\0';
 		doc->parse<0>(buffer);
 	}
 

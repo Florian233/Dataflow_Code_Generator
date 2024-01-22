@@ -1,6 +1,4 @@
-#pragma once
-
-#include "Reader/reader.hpp"
+#include "Reader/Reader.hpp"
 #include "Unit_File_Converter.hpp"
 #include "Converter_RVC_Cpp.hpp"
 #include "Config/debug.h"
@@ -46,7 +44,7 @@ class Unit_Generator {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				} else if (next_token.str != ";") {
 					if (previous_token.str != ".") {
-						path_to_import_file.append("\\").append(previous_token.str);
+						path_to_import_file.append("/").append(previous_token.str);
 					}
 					previous_token = next_token;
 					next_token = token_producer.get_next_Token();
@@ -57,7 +55,7 @@ class Unit_Generator {
 					}
 					else {
 						if (previous_token.str != ".") {
-							path_to_import_file.append("\\").append(previous_token.str);
+							path_to_import_file.append("/").append(previous_token.str);
 						}
 						else {
 							throw Wrong_Token_Exception{ "Found unexpected Token." };

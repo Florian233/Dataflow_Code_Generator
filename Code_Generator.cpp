@@ -5,7 +5,7 @@
 #include "Config/config.h"
 #include "Config/debug.h"
 #include "IR/Dataflow_Network.hpp"
-#include "Reader/reader.hpp"
+#include "Reader/Reader.hpp"
 #include "Actor_Classification/Actor_Classification.hpp"
 #include "Optimization_Phase1/Optimization_Phase1.hpp"
 #include "Optimization_Phase2/Optimization_Phase2.hpp"

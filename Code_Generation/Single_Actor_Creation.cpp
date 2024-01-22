@@ -322,9 +322,9 @@ std::string Code_Generation::generate_actor_code(
 
 	std::string path{ c->get_target_dir() };
 
-	std::ofstream output_file{ path + "\\" + class_name + ".hpp" };
+	std::ofstream output_file{ path + "/" + class_name + ".hpp" };
 	if (output_file.bad()) {
-		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "\\" + class_name + ".hpp" };
+		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "/" + class_name + ".hpp" };
 	}
 	output_file << code;
 	output_file.close();

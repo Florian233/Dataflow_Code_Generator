@@ -185,9 +185,9 @@ static void parse_network(
 				if (strcmp(instance_node->name(), "Class") == 0) {
 					const rapidxml::xml_attribute<>* a = instance_node->first_attribute();
 					std::string path_string{ path };
-					path_string.append("\\");
+					path_string.append("/");
 					std::string str{ a->value() };
-					std::replace(str.begin(), str.end(), '.', '\\');
+					std::replace(str.begin(), str.end(), '.', '/');
 					path_string.append(str);
 					if (network_file(path_string)) {
 						network_instances.insert(id_attribute->value());
@@ -300,7 +300,8 @@ static void start_parsing(
 	Top_network_buffer << network_file.rdbuf();
 	std::string str_to_parse = Top_network_buffer.str();
 	char* buffer = new char[str_to_parse.size() + 1];
-	strcpy_s(buffer, str_to_parse.size() +1, str_to_parse.c_str());
+    std::size_t length = str_to_parse.copy(buffer,str_to_parse.size() + 1);
+    buffer[length]='\0';
 	xml_document<char> *doc = new xml_document<char>;
 	doc->parse<0>(buffer);
 	parse_network(doc->first_node(), path, dpn, prefix, top);

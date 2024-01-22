@@ -21,9 +21,9 @@ void Code_Generation::generate_cmake_file(
 	std::string source_files,
 	std::string path)
 {
-	std::ofstream output_file{ path + "\\CMakeLists.txt" };
+	std::ofstream output_file{ path + "/CMakeLists.txt" };
 	if (output_file.bad()) {
-		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "\\CMakeLists.txt" };
+		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "/CMakeLists.txt" };
 	}
 	output_file << code1;
 	output_file << ("project(\"" + network_name + "\")\n");
