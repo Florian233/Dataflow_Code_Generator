@@ -82,9 +82,9 @@ static void generate_base_class(void) {
 	Config* c = c->getInstance();
 	std::string path{ c->get_target_dir() };
 
-	std::ofstream output_file{ path + "\\Actor.hpp" };
+	std::ofstream output_file{ path + "/Actor.hpp" };
 	if (output_file.bad()) {
-		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "\\Actor.hpp" };
+		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "/Actor.hpp" };
 	}
 	output_file << code;
 	output_file.close();

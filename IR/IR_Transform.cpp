@@ -439,7 +439,7 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 			}
 			else if (it->str != ";") {
 				if (previous_token != ".") {
-					path_to_import_file.append("\\").append(previous_token);
+					path_to_import_file.append("/").append(previous_token);
 				}
 				previous_token = it->str;
 			}
@@ -449,7 +449,7 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 				}
 				else {
 					if (previous_token != ".") {
-						path_to_import_file.append("\\").append(previous_token);
+						path_to_import_file.append("/").append(previous_token);
 					}
 					else {
 						throw Wrong_Token_Exception{ "Unexpected token." };
@@ -545,7 +545,7 @@ void IR::Actor::transform_IR(void) {
 
 
 	if (c->get_verbose_ir_gen()) {
-		printf("Number of actions: %llu.\n", buffered_actions.size());
+		printf("Number of actions: %lu.\n", buffered_actions.size());
 		for (auto it = in_buffers.begin(); it != in_buffers.end(); ++it) {
 			printf("Input Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
 		}

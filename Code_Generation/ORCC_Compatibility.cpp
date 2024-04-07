@@ -118,18 +118,18 @@ std::string header = "#ifndef OPTIONS_HEADER\n#define OPTIONS_HEADER\n	//Struct 
 void Code_Generation::generate_ORCC_compatibility_layer(std::string path) {
 
 	{
-		std::ofstream output_file{ path + "\\options.h" };
+		std::ofstream output_file{ path + "/options.h" };
 		if (output_file.bad()) {
-			throw Code_Generation_Exception{ "Cannot open the file " + path + "\\options.h" };
+			throw Code_Generation_Exception{ "Cannot open the file " + path + "/options.h" };
 		}
 		output_file << header;
 
 		output_file.close();
 	}
 
-	std::ofstream source_file{ path + "\\orcc_compatibility.cpp" };
+	std::ofstream source_file{ path + "/orcc_compatibility.cpp" };
 	if (source_file.bad()) {
-		throw Code_Generation_Exception{ "Cannot open file " + path + "\\orcc_compatibility.cpp" };
+		throw Code_Generation_Exception{ "Cannot open file " + path + "/orcc_compatibility.cpp" };
 	}
 	source_file << parse_command_line_input_function;
 	source_file.close();

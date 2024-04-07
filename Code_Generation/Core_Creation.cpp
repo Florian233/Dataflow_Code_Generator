@@ -298,9 +298,9 @@ void Code_Generation::generate_core(
 
 	std::string path{ c->get_target_dir() };
 
-	std::ofstream output_file{ path + "\\main.cpp" };
+	std::ofstream output_file{ path + "/main.cpp" };
 	if (output_file.bad()) {
-		throw Code_Generation_Exception{ "Cannot open the file " + path + "\\main.cpp" };
+		throw Code_Generation_Exception{ "Cannot open the file " + path + "/main.cpp" };
 	}
 	output_file << code;
 	output_file.close();
