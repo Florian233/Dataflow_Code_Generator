@@ -57,10 +57,9 @@ protected:
 	 * This is done to support the use of end + "construct name".
 	 */
 	void buffer_scope(Token& t, Tokenizer& token_producer, std::string end_token) {
-		while ((t.str != "end") && (t.str != end_token)) {
-			tokens.push_back(t);
-			t = token_producer.get_next_Token();
-
+		tokens.push_back(t);
+        t = token_producer.get_next_Token();
+        while ((t.str != "end") && (t.str != end_token)) {
 			if (t.str == "if") {
 				buffer_scope(t, token_producer, "endif");
 			}
@@ -80,6 +79,10 @@ protected:
 			else if (t.str == "") {
 				throw Wrong_Token_Exception{ "Unexpected End of File" };
 			}
+            else {
+                tokens.push_back(t);
+                t = token_producer.get_next_Token();
+            }
 		}
 
 		// push the end token

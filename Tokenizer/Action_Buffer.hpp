@@ -13,7 +13,6 @@ class Action_Buffer: public Buffer {
 				buffer_bracket(t, token_producer);
 			}
 			else if (t.str == "if") {
-				t = token_producer.get_next_Token();
 				buffer_scope(t, token_producer, "endif");
 			}
 			else if (t.str == "") {
