@@ -1,10 +1,10 @@
-#pragma once
-
-#include "Reader/reader.hpp"
+#include "Reader/Reader.hpp"
 #include "Unit_File_Converter.hpp"
-#include "Converter_RVC_Cpp.hpp"
+#include "Code_Generation/Language/C_Cpp/Converter_RVC_Cpp.hpp"
 #include "Config/debug.h"
+#include <filesystem>
 using namespace Converter_RVC_Cpp;
+using namespace Conversion_Helper;
 
 /*
 	Class to generate C++ code for a given unit file.
@@ -18,7 +18,7 @@ class Unit_Generator {
 	std::string path;//path to source dir
 
 	// Path to file, only used for error case output
-	std::string file_path;
+	std::filesystem::path file_path;
 
 	//map where all constants are inserted. This map is used to find constants if they are used in the calculation of the size of a type.
 	//This map holds all constants in global or actor namespace
@@ -29,7 +29,7 @@ class Unit_Generator {
 
 	converted_unit_file convert_import(Token& t) {
 		if (t.str == "import") {
-			std::string path_to_import_file{ path };
+			std::filesystem::path path_to_import_file{ path };
 			std::string symbol{};
 			path_to_import_file.append(token_producer.get_next_Token().str); //must be part of the path
 			Token previous_token = token_producer.get_next_Token();
@@ -46,7 +46,7 @@ class Unit_Generator {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				} else if (next_token.str != ";") {
 					if (previous_token.str != ".") {
-						path_to_import_file.append("\\").append(previous_token.str);
+						path_to_import_file /= previous_token.str;
 					}
 					previous_token = next_token;
 					next_token = token_producer.get_next_Token();
@@ -57,13 +57,13 @@ class Unit_Generator {
 					}
 					else {
 						if (previous_token.str != ".") {
-							path_to_import_file.append("\\").append(previous_token.str);
+							path_to_import_file /= previous_token.str;
 						}
 						else {
 							throw Wrong_Token_Exception{ "Found unexpected Token." };
 						}
 					}
-					path_to_import_file.append(".cal");
+					path_to_import_file += ".cal";
 					break;
 				}
 			}
@@ -78,7 +78,7 @@ class Unit_Generator {
 
 public:
 	Unit_Generator(
-		std::string _path,
+		std::filesystem::path _path,
 		std::map<std::string, std::string>& map,
 		Actor_Conversion_Data& data,
 		std::string source_dir)
@@ -87,7 +87,7 @@ public:
 	{
 		std::ifstream file(_path, std::ifstream::in);
 		if (file.bad()) {
-			throw Network_Reader::Network_Reader_Exception{ "Cannot open the file " + _path };
+			throw Network_Reader::Network_Reader_Exception{ "Cannot open the file " + _path.string()};
 		}
 		std::stringstream buffer;
 		buffer << file.rdbuf();
@@ -144,30 +144,30 @@ public:
 					|| (next_token.str == "String") || (next_token.str == "bool")
 					|| (next_token.str == "half") || (next_token.str == "float"))
 				{
-					code += convert_expression(next_token, token_producer, const_map, const_map, requested_symbol, false, prefix);
+					code += convert_expression(next_token, token_producer, const_map, const_map, actor_conversion_data.get_symbol_type_map(), requested_symbol, false, prefix);
 				}
 				else if (next_token.str == "function") {
-					std::string tmp{ convert_function(next_token, token_producer, const_map, prefix, requested_symbol) };
+					std::string tmp{ convert_function(next_token, token_producer, const_map, actor_conversion_data.get_symbol_type_map(), prefix, requested_symbol) };
 					code += tmp;
 					//find declaration and insert it at the beginning of the source string, to avoid linker errors
 					//std::string dekl = tmp.substr(0, tmp.find("{")) + ";\n";
 					//declarations.insert(0, dekl);
 				}
 				else if (next_token.str == "procedure") {
-					std::string tmp{ convert_procedure(next_token, token_producer, const_map, prefix, requested_symbol) };
+					std::string tmp{ convert_procedure(next_token, token_producer, const_map, actor_conversion_data.get_symbol_type_map(), prefix, requested_symbol) };
 					code += tmp;
 					//find declaration and insert it at the beginning of the source string, to avoid linker errors
 					//std::string dekl = tmp.substr(0, tmp.find("{")) + ";\n";
 					//declarations.insert(0, dekl);
 				}
 				else if (next_token.str == "List") {
-					code += convert_list(next_token, token_producer, const_map, const_map, requested_symbol, prefix);
+					code += convert_list(next_token, token_producer, const_map, const_map, actor_conversion_data.get_symbol_type_map(), requested_symbol, prefix);
 				}
 				else if (next_token.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					throw Wrong_Token_Exception{ "Unexpected token during processing of " + file_path };
+					throw Wrong_Token_Exception{ "Unexpected token during processing of " + file_path.string()};
 				}
 			}
 		}
@@ -175,7 +175,7 @@ public:
 			found_symbol = true;
 		}
 		if (!found_symbol) {
-			throw Imported_Symbol_Not_Found_Exception{ "Didn't find symbol " + requested_symbol + " in " + file_path + "." };
+			throw Imported_Symbol_Not_Found_Exception{ "Didn't find symbol " + requested_symbol + " in " + file_path.string() + "."};
 		}
 		converted_unit_file c;
 		c.code = code;
@@ -184,11 +184,11 @@ public:
 	}
 };
 
-converted_unit_file Converter_RVC_Cpp::convert_unit_file(
+converted_unit_file Conversion_Helper::convert_unit_file(
 	std::map<std::string, std::string>& symbol_map,
 	Actor_Conversion_Data& conversion_data,
 	const std::string source_dir,
-	const std::string path,
+	const std::filesystem::path path,
 	const std::string requested_symbol,
 	const std::string prefix)
 {

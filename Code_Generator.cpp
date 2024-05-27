@@ -5,7 +5,7 @@
 #include "Config/config.h"
 #include "Config/debug.h"
 #include "IR/Dataflow_Network.hpp"
-#include "Reader/reader.hpp"
+#include "Reader/Reader.hpp"
 #include "Actor_Classification/Actor_Classification.hpp"
 #include "Optimization_Phase1/Optimization_Phase1.hpp"
 #include "Optimization_Phase2/Optimization_Phase2.hpp"
@@ -29,7 +29,8 @@ void parse_command_line_input(int argc, char* argv[]) {
 				"	-n <file>          Specify the top network that shall be converted.\n"
 				"	--orcc			   ORCC compatibility, required to use ORCC projects.\n"
 				"   --cmake            Generate CMake File for the generated code.\n"
-				"   --static_alloc      Make allocations static, don't use new operator.\n"
+				"   --static_alloc     Make allocations static, don't use new operator.\n"
+				"   --abi=<stdc|stdc++>      Generate C or C++ code, default is C++.\n"
 				"\nCommunication Channels:\n"
 				"	-s <number>        Specify the default size of the FIFOs.\n"
 				"\nOpenMP:\n"
@@ -87,6 +88,21 @@ void parse_command_line_input(int argc, char* argv[]) {
 		}
 		else if (strcmp(argv[i], "--static_alloc") == 0) {
 			c->set_static_alloc();
+		}
+		else if (strncmp(argv[i], "--abi=", 6) == 0) {
+			std::string strat{ argv[i] + 6 };
+			if ((strat == "stdc++") || (strat == "stdC++") || (strat == "stdCpp") || (strat == "stdcpp")) {
+				c->set_target_language(Target_Language::cpp);
+				c->set_target_ABI(Target_ABI::stdcpp);
+			}
+			else if ((strat == "stdc") || (strat == "stdC")) {
+				c->set_target_language(Target_Language::c);
+				c->set_target_ABI(Target_ABI::stdc);
+			}
+			else {
+				std::cout << "Cannot detect target ABI and language for code generation." << std::endl;
+				exit(1);
+			}
 		}
 		else if (strcmp(argv[i], "--map_file") == 0) {
 			c->set_mapping_file(argv[++i]);
@@ -262,6 +278,10 @@ void parse_command_line_input(int argc, char* argv[]) {
 		std::cout << "Using non-preemptive scheduling (default)." << std::endl;
 		c->set_sched_non_preemptive();
 	}
+	if ((c->get_target_ABI() == Target_ABI::stdc) && (c->get_cores() != 1)) {
+		std::cout << "stdc ABI only allows usage of one core!" << std::endl;
+		exit(1);
+	}
 }
 
 
@@ -281,6 +301,12 @@ int main(int argc, char* argv[]) {
 	}
 	if (c->get_cmake()) {
 		std::cout << "CMake File generation." << std::endl;
+	}
+	if (c->get_target_language() == Target_Language::c) {
+		std::cout << "Generating C code." << std::endl;
+	}
+	if (c->get_target_language() == Target_Language::cpp) {
+		std::cout << "Generating C++ code." << std::endl;
 	}
 	std::cout << "Scheduling: ";
 	if (c->get_sched_non_preemptive()) {
@@ -325,6 +351,15 @@ int main(int argc, char* argv[]) {
 	}
 	else if (c->is_map_file()) {
 		std::cout << "Read from XML file." << std::endl;
+	}
+
+	if ((c->get_target_ABI() == Target_ABI::stdc) && (c->get_cores() > 1)) {
+		std::cout << "C Standard doesn't provide multi threading...exiting." << std::endl;
+		exit(91);
+	}
+	if ((c->get_target_language() == Target_Language::c) && (c->get_list_scheduling())) {
+		std::cout << "List scheduling not supported for C ...exiting." << std::endl;
+		exit(92);
 	}
 	
 	/* Create target directory if it doesn't exist. */

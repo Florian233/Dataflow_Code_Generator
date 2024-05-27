@@ -4,7 +4,7 @@
 #include <algorithm>
 #include "Config/config.h"
 #include "Conversion/Unit_File_Converter.hpp"
-#include "Conversion/Converter_RVC_Cpp.hpp"
+#include "Code_Generation/Language/C_Cpp/Converter_RVC_Cpp.hpp"
 
 
 //TODO Maybe const values inside the actor might serve for type size specification for the
@@ -82,7 +82,7 @@ void IR::Actor::parse_schedule_fsm(Token& t, Tokenizer& token_producer) {
 			t = token_producer.get_next_Token();
 			while ((t.str != ",") && (t.str != ")")) {
 				if (t.str == ".") {
-					action.append("$");
+					action.append("_");
 				}
 				else {
 					action.append(t.str);
@@ -119,7 +119,7 @@ void IR::Actor::parse_priorities(Token& t, Tokenizer& token_producer) {
 			t = token_producer.get_next_Token();
 			while ((t.str != ">") && (t.str != ";")) {
 				if (t.str == ".") {
-					lesser.append("$");
+					lesser.append("_");
 				} else {
 					lesser.append(t.str);
 				}
@@ -140,7 +140,7 @@ void IR::Actor::parse_priorities(Token& t, Tokenizer& token_producer) {
 				t = token_producer.get_next_Token();
 				while (t.str != ">" && t.str != ";") {
 					if (t.str == ".") {
-						greater.append("$");
+						greater.append("_");
 					}
 					else {
 						greater.append(t.str);
@@ -219,7 +219,7 @@ void IR::Actor::parse_action(Action_Buffer& token_producer) {
 	while (t.str != "==>") {
 		std::string buffer_name{};
 		std::string var_name{};
-		unsigned count = 0;
+		unsigned count = 1;
 		if (t.str != "[") {
 			//Buffer name explicitly stated
 			buffer_name = t.str;
@@ -244,18 +244,18 @@ void IR::Actor::parse_action(Action_Buffer& token_producer) {
 
 		while (t.str != "]") {
 			if (t.str == ",") {
+				++count;
+				var_name.append(t.str);
 				t = token_producer.get_next_Token();
 			}
 			else if (t.str == "[") {
 				var_name.append(skip_bracket(t, token_producer));
-				++count;
 			}
 			else if (t.str == "") {
 				throw Wrong_Token_Exception{ "Unexpected End of File." };
 			}
 			else {
 				var_name.append(t.str);
-				++count;
 				t = token_producer.get_next_Token();
 			}
 		}
@@ -302,7 +302,7 @@ void IR::Actor::parse_action(Action_Buffer& token_producer) {
 	{
 		std::string buffer_name{};
 		std::string var_name{};
-		unsigned count = 0;
+		unsigned count = 1;
 		if (t.str != "[") {
 			//Buffer name explicitly stated
 			buffer_name = t.str;
@@ -327,18 +327,18 @@ void IR::Actor::parse_action(Action_Buffer& token_producer) {
 
 		while (t.str != "]") {
 			if (t.str == ",") {
+				var_name.append(t.str);
 				t = token_producer.get_next_Token();
+				++count;
 			}
 			else if (t.str == "[") {
 				var_name.append(skip_bracket(t, token_producer));
-				++count;
 			}
 			else if (t.str == "") {
 				throw Wrong_Token_Exception{ "Unexpected End of File." };
 			}
 			else {
 				var_name.append(t.str);
-				++count;
 				t = token_producer.get_next_Token();
 			}
 		}
@@ -411,7 +411,7 @@ void IR::Actor::parse_action(Action_Buffer& token_producer) {
 
 void IR::Actor::convert_import(Import_Buffer& token_producer) {
 	Config* c = c->getInstance();
-	std::string path_to_import_file{ c->get_source_dir() };
+	std::filesystem::path path_to_import_file{ c->get_source_dir() };
 	bool parsing_import = false;
 	std::string previous_token;
 	std::string symbol{};
@@ -439,7 +439,7 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 			}
 			else if (it->str != ";") {
 				if (previous_token != ".") {
-					path_to_import_file.append("\\").append(previous_token);
+					path_to_import_file /= previous_token;
 				}
 				previous_token = it->str;
 			}
@@ -449,15 +449,15 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 				}
 				else {
 					if (previous_token != ".") {
-						path_to_import_file.append("\\").append(previous_token);
+						path_to_import_file /= previous_token;
 					}
 					else {
 						throw Wrong_Token_Exception{ "Unexpected token." };
 					}
 				}
-				path_to_import_file.append(".cal");
-				Converter_RVC_Cpp::converted_unit_file output =
-					Converter_RVC_Cpp::convert_unit_file(conversion_data.get_symbol_map(),
+				path_to_import_file += ".cal";
+				Conversion_Helper::converted_unit_file output =
+					Conversion_Helper::convert_unit_file(conversion_data.get_symbol_map(),
 														conversion_data, c->get_source_dir(),
 														path_to_import_file, symbol, "\t");
 				conversion_data.add_var_code(output.code);
@@ -475,19 +475,19 @@ void IR::Actor::convert_import(Import_Buffer& token_producer) {
 void IR::Actor::transform_IR(void) {
 	Config* c = c->getInstance();
 	if (c->get_verbose_ir_gen()) {
-		printf("IR transformation of %s.\n", class_name.c_str());
+		std::cout << "IR transformation of " << class_name << "." << std::endl;
 	}
 
 	Tokenizer token_producer{code};
 	Token t = token_producer.get_next_Token();
-	token_producer.set_context(Converter_RVC_Cpp::Context::Import);
+	token_producer.set_context(Conversion_Helper::Context::Import);
 
 	import_buffers.push_back(Import_Buffer{ t,token_producer });
 
 	for (auto it = import_buffers.begin(); it != import_buffers.end(); ++it) {
 		convert_import(*it);
 	}
-	token_producer.set_context(Converter_RVC_Cpp::Context::Actor_Head);
+	token_producer.set_context(Conversion_Helper::Context::Actor_Head);
 
 	// t now points at actor
 	t = token_producer.get_next_Token();
@@ -501,7 +501,7 @@ void IR::Actor::transform_IR(void) {
 
 	// now pointing at :, skip
 	t = token_producer.get_next_Token();
-	token_producer.set_context(Converter_RVC_Cpp::Context::Actor_Body);
+	token_producer.set_context(Conversion_Helper::Context::Actor_Body);
 
 	while ((t.str != "end") && (t.str != "endactor")) {
 		if ((t.str == "int") || (t.str == "uint") || (t.str == "String")
@@ -531,10 +531,10 @@ void IR::Actor::transform_IR(void) {
 			throw Wrong_Token_Exception{ "Unexpected End of File." };
 		}
 		else {//action
-			token_producer.set_context(Converter_RVC_Cpp::Context::Action_Head);
+			token_producer.set_context(Conversion_Helper::Context::Action_Head);
 			//actions are buffered because it is not clear at this point if there is a fsm or state variables
 			buffered_actions.push_back(Action_Buffer{ t,token_producer });
-			token_producer.set_context(Converter_RVC_Cpp::Context::Actor_Body);
+			token_producer.set_context(Conversion_Helper::Context::Actor_Body);
 		}
 	}
 
@@ -543,35 +543,37 @@ void IR::Actor::transform_IR(void) {
 		parse_action(*it);
 	}
 
-
 	if (c->get_verbose_ir_gen()) {
-		printf("Number of actions: %llu.\n", buffered_actions.size());
+		std::cout << "Number of actions: " << buffered_actions.size() << std::endl;
 		for (auto it = in_buffers.begin(); it != in_buffers.end(); ++it) {
-			printf("Input Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
+			std::cout << "Input Port: " << it->buffer_name  << ", type: " << it->type << std::endl;
 		}
 		for (auto it = out_buffers.begin(); it != out_buffers.end(); ++it) {
-			printf("Output Port: %s, type: %s.\n", it->buffer_name.c_str(), it->type.c_str());
+			std::cout << "Output Port: " << it->buffer_name << ", type: " << it->type << std::endl;
 		}
 		for (auto it = priorities.begin(); it != priorities.end(); ++it) {
-			printf("Priority: %s > %s;\n", it->action_high.c_str(), it->action_low.c_str());
+			std::cout << "Priority: " << it->action_high << " > " << it->action_low << ";" << std::endl;
 		}
 		if (!initial_state.empty()) {
-			printf("Initial state: %s\n", initial_state.c_str());
+			std::cout << "Initial state: " << initial_state << std::endl;
 		}
 		for (auto it = fsm.begin(); it != fsm.end(); ++it) {
-			printf("FSM: %s(%s) -> %s;\n", it->state.c_str(), it->action.c_str(), it->next_state.c_str());
+			std::cout << "FSM: " << it->state << "(" << it->action << ") -> " << it->next_state << ";" << std::endl;
 		}
 		for (auto it = actions.begin(); it != actions.end(); ++it) {
-			printf("Found action: %s, guard: %s\n", (*it)->get_name().c_str(), (*it)->get_guard().c_str());
+			std::cout << "Found action: " << (*it)->get_name() << ", guard: " << (*it)->get_guard() << std::endl;
 			for (auto i_it = (*it)->get_in_buffers().begin();
 				i_it != (*it)->get_in_buffers().end();
-				++i_it) {
-				printf("Input buffer: %s, tokenrate: %d\n", i_it->buffer_name.c_str(), i_it->tokenrate);
+				++i_it)
+			{
+				std::cout << "Input buffer: " << i_it->buffer_name << ", tokenrate: " << i_it->tokenrate << std::endl;
 			}
 			for (auto o_it = (*it)->get_out_buffers().begin();
 				o_it != (*it)->get_out_buffers().end();
-				++o_it) {
-				printf("Output buffer: %s, tokenrate: %d\n", o_it->buffer_name.c_str(), o_it->tokenrate);
+				++o_it)
+			{
+				std::cout << "Output buffer: " << o_it->buffer_name << ", tokenrate: "
+					<< o_it->tokenrate << std::endl;
 			}
 		}
 
@@ -589,6 +591,6 @@ void IR::Actor::transform_IR(void) {
 			std::cout << "Symbol: " << it->first << " Value: " << it->second << std::endl;
 		}
 
-		printf("IR transformation of %s done.\n", class_name.c_str());
+		std::cout << "IR transformation of " << class_name << " done." << std::endl;
 	}
 }

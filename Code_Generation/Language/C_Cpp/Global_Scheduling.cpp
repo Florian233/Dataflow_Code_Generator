@@ -1,6 +1,16 @@
 #include "Scheduling.hpp"
 #include "Config/config.h"
-#include "Scheduling_Lib.hpp"
+#include "Scheduling_Lib/Scheduling_Lib.hpp"
+#include "ABI/abi.hpp"
+
+//TODO: C code generation
+
+static std::string find_class_name(
+	std::string actor_name,
+	std::map<std::string, Actor_Conversion_Data*>& actor_data_map)
+{
+	return actor_data_map[actor_name]->get_class_name();
+}
 
 static std::string basic_non_preemptive(
 	IR::Dataflow_Network* dpn,
@@ -26,7 +36,9 @@ static std::string basic_non_preemptive(
 	if (map_data->actor_sharing) {
 		// Actor sharing is active, hence, we must make sure to run an actor only on one PE at the same time
 		for (auto it = actor_data_map.begin(); it != actor_data_map.end(); ++it) {
-			result.append("std::atomic_flag " + it->first + "_lock = ATOMIC_FLAG_INIT;\n");
+			std::string tmp;
+			ABI_ATOMIC_DECL(c, tmp, it->first, "");
+			result.append(tmp);
 		}
 		result.append("\n");
 
@@ -49,14 +61,27 @@ static std::string basic_non_preemptive(
 		result.append("void global_scheduler(void) {\n");
 		result.append("\twhile (1) {\n");
 		for (auto it = actors.begin(); it != actors.end(); ++it) {
-			result.append("\t\tif(!" + *it + "_lock.test_and_set()) {\n");
-			if (c->get_static_alloc()) {
-				result.append("\t\t\t" + *it + ".schedule();\n");
+			std::string tmp;
+			ABI_ATOMIC_TEST_SET(c, tmp, *it, "");
+			result.append("\t\tif(!" + tmp + ") { \n");
+			if (c->get_target_language() == Target_Language::cpp) {
+				if (c->get_static_alloc()) {
+					result.append("\t\t\t" + *it + ".schedule();\n");
+				}
+				else {
+					result.append("\t\t\t" + *it + "->schedule();\n");
+				}
 			}
 			else {
-				result.append("\t\t\t" + *it + "->schedule();\n");
+				if (c->get_static_alloc()) {
+					result.append("\t\t\t" + find_class_name(*it, actor_data_map) + "_schedule(&" + *it + ");\n");
+				}
+				else {
+					result.append("\t\t\t" + find_class_name(*it, actor_data_map) + "_schedule(" + *it + ");\n");
+				}
 			}
-			result.append("\t\t\t" + *it + "_lock.clear();\n");
+			ABI_ATOMIC_CLEAR(c, tmp, *it, "\t\t\t");
+			result.append(tmp);
 			result.append("\t\t}\n");
 		}
 		result.append("\t}\n");
@@ -104,11 +129,21 @@ static std::string basic_non_preemptive(
 			}
 			else {
 				for (auto it = maybe_sorted.begin(); it != maybe_sorted.end(); ++it) {
-					if (c->get_static_alloc()) {
-						result.append("\t\t" + *it + ".schedule();\n");
+					if (c->get_target_language() == Target_Language::cpp) {
+						if (c->get_static_alloc()) {
+							result.append("\t\t" + *it + ".schedule();\n");
+						}
+						else {
+							result.append("\t\t" + *it + "->schedule();\n");
+						}
 					}
 					else {
-						result.append("\t\t" + *it + "->schedule();\n");
+						if (c->get_static_alloc()) {
+							result.append("\t\t" + find_class_name(*it, actor_data_map) + "_schedule(&" + *it + ");\n");
+						}
+						else {
+							result.append("\t\t" + find_class_name(*it, actor_data_map) + "_schedule(" + *it + ");\n");
+						}
 					}
 				}
 			}

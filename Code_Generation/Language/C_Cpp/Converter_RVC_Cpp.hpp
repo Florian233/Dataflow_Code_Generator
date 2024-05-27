@@ -3,7 +3,7 @@
 #include <string>
 #include <utility>
 #include <map>
-#include "Actor_Conversion_Data.hpp"
+#include "Conversion/Actor_Conversion_Data.hpp"
 
 /*
 	Namespace containing all functions needed to convert basic RVC expressions like functions, loops,...
@@ -20,8 +20,9 @@ namespace Converter_RVC_Cpp {
 			1. Token Reference containing "function" 
 			2. the corresponding token producer to the token
 			3. global map for definitions and declarations in the actor or global space
-			4. prefix for each line of code
-			5. symbol, default * means every symbol
+			4. global map for symbols and their types in the actor or global scope
+			5. prefix for each line of code
+			6. symbol, default * means every symbol
 		After the function call the token is one past the code of the function.
 		The global map hasn't changed. The function returns the converted code if the symbol is a * or equal to the function name. 
 	*/
@@ -29,6 +30,7 @@ namespace Converter_RVC_Cpp {
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix = "",
 		std::string symbol = "*"); 
 
@@ -38,8 +40,9 @@ namespace Converter_RVC_Cpp {
 			1. Token Reference containing "function"
 			2. the corresponding token producer reference to the token
 			3. global map for definitions and declarations in the actor or global space
-			4. prefix for each line of code
-			5. symbol, default * means every symbol
+			4. global map for symbols and their types in the actor or global space
+			5. prefix for each line of code
+			6. symbol, default * means every symbol
 		After the function call the token is one past the code of the procedure.
 		The global map hasn't changed. The function returns the converted code if the symbol is a * or equal to the procedure name.
 	*/
@@ -47,6 +50,7 @@ namespace Converter_RVC_Cpp {
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix = "",
 		std::string symbol = "*"); 
 	
@@ -57,9 +61,10 @@ namespace Converter_RVC_Cpp {
 			2. The corresponding token container reference to the token
 			3. A map (symbol,value) for global or actor definitions/declarations
 			4. A map (symbol,value) for the local scope
-			5. boolean return statement: true: return in the body of the if, false: no return 
-			6. prefix for each generated line of code
-			7. boolean nested: true: the if is nested in another if, false: no nesting of if clauses
+			5. A map (symbol, type) for the current scope
+			6. boolean return statement: true: return in the body of the if, false: no return 
+			7. prefix for each generated line of code
+			8. boolean nested: true: the if is nested in another if, false: no nesting of if clauses
 		The function returns the generated code in a string.
 	*/
 	std::string convert_if(
@@ -67,6 +72,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		bool return_statement = false,
 		std::string prefix = "",
 		bool nested = false);
@@ -78,8 +84,9 @@ namespace Converter_RVC_Cpp {
 			2. corresponding token container to the token
 			3. Map (symbol,value) for the global and actor scope
 			4. Map (Symbol, Value) for the local scope
-			5. boolean return statement: true: the expression in the loop body should be a return statement
-			6. prefix for each generated line of code
+			5. Map (Symbol, Type) for the current scope
+			6. boolean return statement: true: the expression in the loop body should be a return statement
+			7. prefix for each generated line of code
 		The function converts the loop from RVC to C++ code.
 		Both maps are used for type conversions from RVC to C++.
 		If the return statement argument is true, the expression in the body of loop gets a "return" as a prefix.
@@ -90,6 +97,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		bool return_statement = false,
 		std::string prefix = "");
 
@@ -100,6 +108,7 @@ namespace Converter_RVC_Cpp {
 			2. corresponding token container to the token
 			3. Map (symbol,value) for the global and actor scope
 			4. Map (Symbol, Value) for the local scope
+			5. Map (Symbol, Type) for the current scope
 			5. boolean return statement: true: the expression in the loop body should be a return statement
 			6. prefix for each generated line of code
 		The function converts the loop from RVC to C++ code.
@@ -112,6 +121,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		bool return_statement = false,
 		std::string prefix = "");
 
@@ -122,7 +132,9 @@ namespace Converter_RVC_Cpp {
 			1. Token reference 
 			2. the corresponding token container
 			3. Map (symbol,value) for the actor and the global scope
-			4. Prefix for each generated line of code
+			4. Map (symbol, type) for the current scope
+			5. Symbol name of the obtained symbol
+			6. Prefix for each generated line of code
 		All definitions and declarations are inserted into the global map.
 		The generated C++ code is returned in string object.
 	*/
@@ -130,6 +142,8 @@ namespace Converter_RVC_Cpp {
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string& symbol_name,
 		std::string prefix = ""); 
 
 	/*
@@ -140,9 +154,11 @@ namespace Converter_RVC_Cpp {
 			2. the corresponding token container
 			3. Map (symbol,value) for the actor and the global scope
 			4. Map (symbol,value) for the local scope
-			5. Symbol 
-			6. Return statement: true: result of the expression should be returned, false: no return
-			7. Prefix for each generated line of code
+			5. Map (symbol, type) for the current scope
+			6. Symbol Name of the obtained symbol
+			7. Symbol - might be *
+			8. Return statement: true: result of the expression should be returned, false: no return
+			9. Prefix for each generated line of code
 		All definitions and declarations are inserted into the global map and C++ code is generated for them if the symbol is equal to the 
 		name of the variable that is declared or defined or the symbol input is a *.
 		If return statement is true, the expression gets "return" as a prefix.
@@ -153,9 +169,57 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string& symbol_name,
 		std::string symbol = "*",
 		bool return_statement = false,
-		std::string prefix = ""); 
+		std::string prefix = "");
+
+	/*
+	Function to convert a basic expression like operations and assignments or definitions or declarations
+	that are not covered by other functions to C++ code.
+	Parameters:
+		1. Token reference
+		2. the corresponding token container
+		3. Map (symbol,value) for the actor and the global scope
+		4. Map (symbol, type) for the actor and the current scope
+		5. Prefix for each generated line of code
+	All definitions and declarations are inserted into the global map.
+	The generated C++ code is returned in string object.
+*/
+	std::string convert_expression(
+		Token& t,
+		Token_Container& token_producer,
+		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string prefix = "");
+
+	/*
+		Function to convert a basic expression like operations and assignments or definitions or declarations
+		that are not covered by other functions to C++ code.
+		Parameters:
+			1. Token reference
+			2. the corresponding token container
+			3. Map (symbol,value) for the actor and the global scope
+			4. Map (symbol,value) for the local scope
+			5. Map (symbol, type) for the current scope
+			6. Symbol
+			7. Return statement: true: result of the expression should be returned, false: no return
+			8. Prefix for each generated line of code
+		All definitions and declarations are inserted into the global map and C++ code is generated for them if the symbol is equal to the
+		name of the variable that is declared or defined or the symbol input is a *.
+		If return statement is true, the expression gets "return" as a prefix.
+		The generated C++ code is returned in string object.
+	*/
+	std::string convert_expression(
+		Token& t,
+		Token_Container& token_producer,
+		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string symbol = "*",
+		bool return_statement = false,
+		std::string prefix = "");
 
 	/*
 		Function to convert a list definition or declaration to C++ code.
@@ -163,7 +227,8 @@ namespace Converter_RVC_Cpp {
 			1. token reference containing "list"
 			2. the corresponding token container to the token
 			3. Map (symbol,value) for the global and actor scope
-			4. prefix for each generated line of code
+			4. Map (symbol, type) for the current scope
+			5. prefix for each generated line of code
 		The function converts the RVC code to C++ Code and inserts the name of the list to the global map.
 		The list is converted to a c++ array. Assignments are converted to c++ list assignments.
 		For the size calculations the symbol value mapping of the map is used.
@@ -174,6 +239,7 @@ namespace Converter_RVC_Cpp {
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix = "");
 	
 	/*
@@ -183,8 +249,9 @@ namespace Converter_RVC_Cpp {
 			2. the corresponding token container to the token
 			3. Map (symbol,value) for the global and actor scope
 			4. Map (symbol,value) for the local scope
-			5. symbol name (default *)
-			6. prefix for each generated line of code
+			5. Map (symbol, type) for the current scope
+			6. symbol name (default *)
+			7. prefix for each generated line of code
 		The function converts the RVC code to C++ Code and inserts the name of the list to the local map if the name of the list is 
 		equal to the symbol or the symbol is equal to *. Otherwise no c++ code is generated and an empty string is returned. 
 		The list is converted to a c++ array. Assignments are converted to c++ list assignments.
@@ -197,6 +264,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string symbol = "*",
 		std::string prefix = ""); 
 
@@ -316,6 +384,7 @@ namespace Converter_RVC_Cpp {
 			1. String containing the expression
 			2. Map (Symbol,Value) for the global/actor scope
 			3. Map (Symbol,Value) for the local scope
+			4. Map (Symbol, Type) for the current scope
 			4. Prefix for each line 
 			5. Symbol the values are assigned to
 	*/
@@ -323,6 +392,7 @@ namespace Converter_RVC_Cpp {
 		std::string string_to_convert,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix,
 		std::string outer_expression);
 

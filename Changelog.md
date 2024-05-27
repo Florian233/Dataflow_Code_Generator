@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3
+
+### Added
+ * Architecture refactoring for improved support of different target languages
+ * C Code generation
+
+### Changed
+ * Fixed a bug in action conversion (Thanks Saltuk)
+ * Used paths that are OS independent (Thanks Saltuk)
+ * Fixed a bug that caused wrong parsing of strings
+ * Used LF for all files instead of CRLF
+
 ## 1.2.1
 
 ### Added

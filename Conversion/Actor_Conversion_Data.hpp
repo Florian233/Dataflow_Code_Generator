@@ -4,7 +4,7 @@
 #include <vector>
 #include <map>
 #include "IR/Action.hpp"
-#include "Code_Generation/Scheduling/Scheduling_Data.hpp"
+#include "Scheduling_Lib/Scheduling_Data.hpp"
 
 /* Object to store data that is relevant during and for the conversion of an actor and its instances.
  * Under certain conditions actor instances might also be linked to a valid conversion data object!
@@ -12,6 +12,7 @@
 class Actor_Conversion_Data {
 	using value = std::string;
 	using symbol = std::string;
+	using type = std::string;
 private:
 	/* Buffer already converted code for the code generation step, conversion might be necessary before
 	 * e.g. to determine token rates depending on const values.
@@ -26,6 +27,7 @@ private:
 	/* Order of the parameters passed to constructor, order preserving of vector is necessary here! */
 	std::vector<std::string> parameter_order;
 	std::map<symbol, value> actor_symbol_map;
+	std::map<symbol, type> symbol_type_map;
 	bool is_parallelizable{ false };
 	std::string type_code;
 	std::vector<std::string> native_functions;
@@ -40,6 +42,10 @@ private:
 
 	std::map<std::string, std::vector<Scheduling::Channel_Schedule_Data>> local_scheduler_data_map;
 	std::map<std::string, std::string> channel_name_type_map;
+
+	std::map<std::string, std::string> replacement_map;
+
+	std::vector<std::string> class_variables;
 
 public:
 	Actor_Conversion_Data() {
@@ -161,4 +167,45 @@ public:
 	std::map<std::string, std::string>& get_channel_name_type_map(void) {
 		return channel_name_type_map;
 	}
+
+	std::vector<std::string>& get_class_variables(void) {
+		return class_variables;
+	}
+
+	void add_class_variable(std::string v) {
+		class_variables.push_back(v);
+	}
+
+	void add_symbol_type(std::string symbol, std::string type) {
+		symbol_type_map[symbol] = type;
+	}
+
+	std::string get_symbol_type(std::string symbol) {
+		if (symbol_type_map.contains(symbol)) {
+			return symbol_type_map[symbol];
+		}
+		else {
+			return "";
+		}
+	}
+
+	std::map<std::string, std::string>& get_symbol_type_map(void) {
+		return symbol_type_map;
+	}
+
+	void add_replacement(std::string old_var, std::string new_var) {
+		replacement_map[old_var] = new_var;
+	}
+
+	std::string get_replacement(std::string var) {
+		if (replacement_map.contains(var)) {
+			return replacement_map[var];
+		}
+		return "";
+	}
+
+	std::map<std::string, std::string>& get_replacement_map(void) {
+		return replacement_map;
+	}
+
 };

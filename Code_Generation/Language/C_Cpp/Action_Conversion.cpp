@@ -1,8 +1,12 @@
 #include "Action_Conversion.hpp"
-#include "Conversion/Converter_RVC_Cpp.hpp"
+#include "Converter_RVC_Cpp.hpp"
 #include "Conversion/Unsupported.hpp"
 #include "Tokenizer/Tokenizer.hpp"
 #include <tuple>
+#include "Scheduling_Lib/Scheduling_Data.hpp"
+#include "ABI/abi.hpp"
+#include "Config/config.h"
+#include "common/include/String_Helper.h"
 
 /*
 	This function takes a token pointing at the start of the list comprehension, the corresponding Action_Buffer,
@@ -17,10 +21,12 @@ static std::string convert_list_comprehension(
 	Token& t,
 	Token_Container& token_producer,
 	std::string var_name,
+	std::string type,
 	std::string prefix,
 	std::map<std::string, std::string>& global_map,
 	std::map<std::string, std::string>& local_map)
 {
+	Config* c = c->getInstance();
 	std::string output;
 	std::string var_iterator = Converter_RVC_Cpp::find_unused_name(global_map, local_map);
 	t = token_producer.get_next_Token();//drop [
@@ -49,11 +55,11 @@ static std::string convert_list_comprehension(
 		std::string tail{};
 		while (t.str != "]") {
 			if ((t.str == "for") || (t.str == "foreach")) {
-				head.append(prefix + "for(");
 				t = token_producer.get_next_Token();
 				if ((t.str == "uint") || (t.str == "int") || (t.str == "String") || (t.str == "bool")
 					|| (t.str == "half") || (t.str == "float"))
 				{
+					head.append(prefix + "for(");
 					head.append(Converter_RVC_Cpp::convert_type(t, token_producer, global_map));
 					head.append(" " + t.str + " = ");
 					std::string var_name{ t.str };
@@ -67,18 +73,33 @@ static std::string convert_list_comprehension(
 				}
 				else {
 					//no type, directly variable name, indicates foreach loop
-					head.append("auto " + t.str);
+					std::string var_name{ t.str };
 					t = token_producer.get_next_Token();//in
-					head.append(":");
 					t = token_producer.get_next_Token();
+					std::string tmp;
 					if ((t.str == "[") || (t.str == "{")) {
 						t = token_producer.get_next_Token();
-						head.append("{");
+						tmp.append("{");
 						while (t.str != "]") {
-							head.append(t.str);
+							tmp.append(t.str);
 						}
-						head.append("}");
+						tmp.append("}");
 						t = token_producer.get_next_Token();
+					}
+					if (c->get_target_language() == Target_Language::cpp) {
+						head.append(prefix + "for(");
+						head.append("auto " + var_name);
+						head.append(":");
+						head.append(tmp);
+					}
+					else {
+						std::string unused1 = Converter_RVC_Cpp::find_unused_name(global_map, local_map);
+						std::string unused2 = Converter_RVC_Cpp::find_unused_name(global_map, local_map);
+						head.append(prefix + type + " " + unused1 + "[] = " + tmp + ";\n");
+						head.append(prefix + "for(unsigned " + unused2 + " = 0; " +
+							unused2 + " < sizeof(" + unused1 + ") / sizeof(" + unused1 + "[0]); ++" +
+							unused2 + ") {\n");
+						head.append(prefix + type + " " + var_name + " = " + unused1 + "[" + unused2 + "];\n");
 					}
 				}
 				tail.append(prefix + "}\n");
@@ -95,8 +116,18 @@ static std::string convert_list_comprehension(
 		tmp.insert(0, "{");
 		tmp.append("}");
 		std::string unused_var_name = Converter_RVC_Cpp::find_unused_name(global_map, local_map);
-		command.append(unused_var_name + ";\n");
-		output.append(prefix + "for( auto " + unused_var_name + ":" + tmp + ") {\n");
+		if (c->get_target_language() == Target_Language::cpp) {
+			command.append(unused_var_name + ";\n");
+			output.append(prefix + "for( auto " + unused_var_name + ":" + tmp + ") {\n");
+		}
+		else {
+			std::string acc_var = Converter_RVC_Cpp::find_unused_name(global_map, local_map);
+			command.append(unused_var_name + "[" + acc_var + "];\n");
+			output.append(prefix + type + " " + unused_var_name + "[] = " + tmp + ";\n");
+			output.append(prefix + "for(unsigned " + acc_var + " = 0; " + acc_var +
+				" < sizeof(" + unused_var_name + ") / sizeof(" +
+				unused_var_name + "[0]); ++" + acc_var + ") {\n");
+		}
 		output.append(prefix + command);
 		output.append(prefix + "}\n");
 	}
@@ -114,7 +145,8 @@ static std::string convert_inline_if_with_list_assignment(
 	std::map<std::string, std::string>& global_map,
 	std::map<std::string, std::string>& local_map,
 	std::string prefix,
-	std::string var_name)
+	std::string var_name,
+	std::string type)
 {
 	std::string condition;
 	std::string expression1;
@@ -144,14 +176,14 @@ static std::string convert_inline_if_with_list_assignment(
 	if (nested) {
 		Tokenizer tok{ expression1 };
 		Token tok_token = tok.get_next_Token();
-		expression1 = convert_inline_if_with_list_assignment(tok_token, tok, global_map, local_map, prefix + "\t", var_name);
+		expression1 = convert_inline_if_with_list_assignment(tok_token, tok, global_map, local_map, prefix + "\t", var_name, type);
 	}
 	else {
 		//auf listenzuweiseung prüfen, wenn ja mit convert_list_comprehension in C++ Code umwandeln
 		if (expression1[0] == '[') {
 			Tokenizer tok{ expression1 };
 			Token tok_token = tok.get_next_Token();
-			expression1 = convert_list_comprehension(tok_token, tok, var_name, prefix + "\t", global_map, local_map);
+			expression1 = convert_list_comprehension(tok_token, tok, var_name, type, prefix + "\t", global_map, local_map);
 		}
 		else {
 			expression1 = prefix + "\t" + var_name + " = " + expression1 + ";\n";
@@ -178,14 +210,14 @@ static std::string convert_inline_if_with_list_assignment(
 	if (nested) {
 		Tokenizer tok{ expression2 };
 		Token t = tok.get_next_Token();
-		expression2 = convert_inline_if_with_list_assignment(t, tok, global_map, local_map, prefix + "\t", var_name);
+		expression2 = convert_inline_if_with_list_assignment(t, tok, global_map, local_map, prefix + "\t", var_name, type);
 	}
 	else {
 		//auf listenzuweiseung prüfen, wenn ja mit convert_list_comprehension in C++ Code umwandeln
 		if (expression2[0] == '[') {
 			Tokenizer tok{ expression2 };
 			Token t = tok.get_next_Token();
-			expression2 = convert_list_comprehension(t, tok, var_name, prefix + "\t", global_map, local_map);
+			expression2 = convert_list_comprehension(t, tok, var_name, type, prefix + "\t", global_map, local_map);
 		}
 		else {
 			expression2 = prefix + "\t" + var_name + " = " + expression2 + ";\n";
@@ -214,6 +246,7 @@ static std::string convert_action_body(
 	Action_Buffer& token_producer,
 	Actor_Conversion_Data& actor_data,
 	std::map<std::string, std::string> local_symbol_map,
+	std::map<std::string, std::string> local_type_map,
 	std::string prefix = "")
 {
 	std::string output;
@@ -223,19 +256,19 @@ static std::string convert_action_body(
 		}
 		else if ((t.str == "for") || (t.str == "foreach")) {
 			output.append(Converter_RVC_Cpp::convert_for(t, token_producer,
-				actor_data.get_symbol_map(), local_symbol_map, false, prefix));
+				actor_data.get_symbol_map(), local_symbol_map, local_type_map, false, prefix));
 		}
 		else if (t.str == "while") {
 			output.append(Converter_RVC_Cpp::convert_while(t, token_producer,
-				actor_data.get_symbol_map(), local_symbol_map, false, prefix));
+				actor_data.get_symbol_map(), local_symbol_map, local_type_map, false, prefix));
 		}
 		else if (t.str == "if") {
 			output.append(Converter_RVC_Cpp::convert_if(t, token_producer,
-				actor_data.get_symbol_map(), local_symbol_map, false, prefix));
+				actor_data.get_symbol_map(), local_symbol_map, local_type_map, false, prefix));
 		}
 		else {
 			output.append(Converter_RVC_Cpp::convert_expression(t, token_producer,
-				actor_data.get_symbol_map(), local_symbol_map, "*", false, prefix));
+				actor_data.get_symbol_map(), local_symbol_map, actor_data.get_symbol_type_map(), "*", false, prefix));
 		}
 	}
 	return output;
@@ -254,11 +287,13 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 	Action_Buffer& token_producer,
 	Actor_Conversion_Data& actor_data,
 	std::map<std::string, std::string>& local_map,
+	std::map<std::string, std::string>& local_type_map,
 	std::string prefix,
 	std::string method_name,
 	bool input_channel_parameters,
 	std::set<std::string> unused_in_channels)
 {
+	Config* c = c->getInstance();
 	//token contains start of the fifo part - first fifo name
 	std::string output;
 	std::string definitions;
@@ -284,14 +319,24 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 				}
 				if (t.str == "[") {
 					while (t.str != "]") {
-						expr.append(t.str);
+						if (actor_data.get_replacement_map().contains(t.str)) {
+							expr.append(actor_data.get_replacement(t.str));
+						}
+						else {
+							expr.append(t.str);
+						}
 						t = token_producer.get_next_Token();
 					}
 					expr.append(t.str);
 					t = token_producer.get_next_Token();
 				}
 				else {
-					expr.append(t.str);
+					if (actor_data.get_replacement_map().contains(t.str)) {
+						expr.append(actor_data.get_replacement(t.str));
+					}
+					else {
+						expr.append(t.str);
+					}
 					t = token_producer.get_next_Token();
 				}
 			}
@@ -317,7 +362,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 				output.append(prefix + "for (unsigned " + repeat_iterator + " = 0; " + repeat_iterator + " < " + std::to_string(repeat_count) + "; ++" + repeat_iterator + ") { \n");
 
 				if (input_channel_parameters) {
-					parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "$param");
+					parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "_param");
 				}
 			}
 
@@ -334,10 +379,12 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 				}
 
 				if (input_channel_parameters) {
-					output.append("\t" + prefix + std::get<0>(*it) + "[" + repeat_iterator + "] = " + name + "$param[" + repeat_iterator + "];\n");
+					output.append("\t" + prefix + std::get<0>(*it) + "[" + repeat_iterator + "] = " + name + "_param[" + repeat_iterator + "];\n");
 				}
 				else {
-					output.append("\t" + prefix + std::get<0>(*it) + "[" + repeat_iterator + "] = " + name + "->read();\n");
+					std::string tmp;
+					ABI_CHANNEL_READ(c, tmp, name)
+					output.append("\t" + prefix + std::get<0>(*it) + "[" + repeat_iterator + "] = " + tmp + ";\n");
 				}
 			}
 
@@ -352,6 +399,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 			d.unused_channel = unused_channel;
 			for (auto it = consumed_element_names.begin(); it != consumed_element_names.end(); ++it) {
 				d.var_names.push_back(std::get<0>(*it));
+				local_type_map[std::get<0>(*it)] = d.type;
 			}
 			actor_data.add_scheduler_data(method_name, d);
 
@@ -363,14 +411,14 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 			std::string channel_iterator;
 			if (input_channel_parameters && !unused_channel) {
 				if (consumed_element_names.size() > 1) {
-					parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "$param");
+					parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "_param");
 					channel_iterator = Converter_RVC_Cpp::find_unused_name(actor_data.get_symbol_map(), local_map);
 					output.append(prefix + "unsigned " + channel_iterator + " = 0;\n");
 				}
 				else {
 					if (get<1>(consumed_element_names[0])) {
-						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " " + name + "$param");
-						output.append(prefix + get<0>(consumed_element_names[0]) + " = " + name + "$param;\n");
+						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " " + name + "_param");
+						output.append(prefix + get<0>(consumed_element_names[0]) + " = " + name + "_param;\n");
 					}
 					else {
 						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " " + get<0>(consumed_element_names[0]));
@@ -385,25 +433,29 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 						continue;
 					}
 					if (std::get<1>(*it)) {
-						output.append(prefix + std::get<0>(*it) + " = " + name + "$param["+ channel_iterator  +"];\n");
+						output.append(prefix + std::get<0>(*it) + " = " + name + "_param["+ channel_iterator  +"];\n");
 					}
 					else {
-						output.append(prefix + "auto " + std::get<0>(*it) + " = " + name + "$param["+ channel_iterator  +"];\n");
+						output.append(prefix + actor_data.get_channel_name_type_map()[name] + " " + std::get<0>(*it) + " = " + name + "_param["+ channel_iterator  +"];\n");
 					}
 				}
 				else {
 					if (std::get<1>(*it)) {
 						if (!unused_channel) {
-							output.append(prefix + std::get<0>(*it) + " = " + name + "->read();\n");
+							std::string tmp;
+							ABI_CHANNEL_READ(c, tmp, name)
+							output.append(prefix + std::get<0>(*it) + " = " + tmp + ";\n");
 						}
 					}
 					else {
-						output.append(prefix + "auto " + std::get<0>(*it));
+						output.append(prefix + actor_data.get_channel_name_type_map()[name] + " " + std::get<0>(*it));
 						if (unused_channel) {
 							output.append(";\n");
 						}
 						else {
-							output.append(" = " + name + "->read();\n");
+							std::string tmp;
+							ABI_CHANNEL_READ(c, tmp, name)
+							output.append(" = " + tmp + "; \n");
 						}
 					}
 				}
@@ -420,6 +472,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 			d.unused_channel = unused_channel;
 			for (auto it = consumed_element_names.begin(); it != consumed_element_names.end(); ++it) {
 				d.var_names.push_back(std::get<0>(*it));
+				local_type_map[std::get<0>(*it)] = d.type;
 			}
 			actor_data.add_scheduler_data(method_name, d);
 		}
@@ -450,6 +503,7 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 	bool output_channel_parameters,
 	std::set<std::string> unused_out_channels)
 {
+	Config* c = c->getInstance();
 	//token contains start of output fifo part - first fifo name
 	std::string output;
 	std::string definitions;
@@ -467,10 +521,11 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 		while (t.str != "]") {
 			std::string expr;
 			bool add_define{ false };
-			std::string accessor_var = name + "$" + std::to_string(accessor_counter);
+			std::string accessor_var = name + "_" + std::to_string(accessor_counter);
 			if (t.str == "[") {
 				//Found List comprehension
 				output.append(convert_list_comprehension(t, token_producer, accessor_var,
+					actor_data.get_channel_name_type_map()[name],
 					prefix, actor_data.get_symbol_map(), local_map));
 				t = token_producer.get_next_Token(); //drop last ] of the list comprehension
 				expr = accessor_var;
@@ -500,7 +555,8 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 							Tokenizer tok{ tmp.first };
 							Token tok_token = tok.get_next_Token();
 							output.append(convert_inline_if_with_list_assignment(tok_token, tok,
-								actor_data.get_symbol_map(), local_map, prefix, accessor_var));
+								actor_data.get_symbol_map(), local_map, prefix, accessor_var,
+								actor_data.get_channel_name_type_map()[name]));
 							add_define = true;
 							expr.append(accessor_var);
 						}
@@ -544,7 +600,7 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 
 				in_repeat_iterator = Converter_RVC_Cpp::find_unused_name(actor_data.get_symbol_map(), local_map);
 				if (output_channel_parameters) {
-					parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "$param");
+					parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "_param");
 					output.append(prefix + "\t" + in_repeat_iterator + " = " + repeat_iterator + " * " + std::to_string(output_fifo_expr.size()) + ";\n");
 				}
 			}
@@ -560,10 +616,13 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 				}
 
 				if (output_channel_parameters) {
-					output.append(prefix + "\t" + name + "$param[" + in_repeat_iterator + "++] = " + std::get<0>(*it) + "[" + repeat_iterator + "];\n");
+					output.append(prefix + "\t" + name + "_param[" + in_repeat_iterator + "++] = " + std::get<0>(*it) + "[" + repeat_iterator + "];\n");
 				}
 				else {
-					output.append(prefix + "\t" + name + "->write(" + std::get<0>(*it) + "[" + repeat_iterator + "]);\n");
+					std::string tmp;
+					std::string wv = std::get<0>(*it) + "[" + repeat_iterator + "]";
+					ABI_CHANNEL_WRITE(c, tmp, wv, name)
+					output.append(prefix + "\t" + tmp + ";\n");
 				}
 			}
 
@@ -589,10 +648,10 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 				std::string channel_iterator;
 				if (output_channel_parameters && !unused_channel) {
 					if (output_fifo_expr.size() == 1) {
-						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " &" + name + "$param");
+						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " &" + name + "_param");
 					}
 					else {
-						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "$param");
+						parameters.append("\n" + prefix + actor_data.get_channel_name_type_map()[name] + " *" + name + "_param");
 						channel_iterator = Converter_RVC_Cpp::find_unused_name(actor_data.get_symbol_map(), local_map);
 						output.append(prefix + "unsigned " + channel_iterator + " = 0;\n");
 					}
@@ -602,14 +661,17 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 
 					if (output_channel_parameters) {
 						if (output_fifo_expr.size() == 1) {
-							output.append(prefix + name + "$param = " + get<0>(*it) + ";\n");
+							output.append(prefix + name + "_param = " + get<0>(*it) + ";\n");
 						}
 						else {
-							output.append(prefix + name + "$param[" + channel_iterator + "++] = " + get<0>(*it) + ";\n");
+							output.append(prefix + name + "_param[" + channel_iterator + "++] = " + get<0>(*it) + ";\n");
 						}
 					}
 					else {
-						output.append(prefix + name + "->write(" + get<0>(*it) + ");\n");
+						std::string tmp;
+						std::string wv = get<0>(*it);
+						ABI_CHANNEL_WRITE(c, tmp, wv, name)
+						output.append(prefix + tmp + ";\n");
 					}
 				}
 			}
@@ -657,18 +719,20 @@ std::string convert_action(
 	std::string prefix)
 {
     std::map<std::string, std::string> local_symbol_map;
-	std::string output{ };
+	std::map<std::string, std::string> local_type_map{ actor_data.get_symbol_type_map() };
+	std::string output{ prefix };
 	std::string end_of_output;
 	std::string middle_of_output;
 	Token t = token_producer->get_next_Token();
 	std::string method_name;
+	Config* c = c->getInstance();
+	bool is_init = false;
 
 	if (t.str == "action") {//action has no name
 		method_name = action->get_name();
 	}
 	else if (t.str == "initialize") {
-		method_name = "init";
-		actor_data.set_init();
+		is_init = true;
 	}
 	else {
 		std::string action_tag;
@@ -680,7 +744,7 @@ std::string convert_action(
 			t = token_producer->get_next_Token();
 			while (t.str != ":") {
 				if (t.str == ".") {//dots cannot be used in c++ 
-					action_name.append("$");
+					action_name.append("_");
 				}
 				else {
 					action_name.append(t.str);
@@ -690,10 +754,27 @@ std::string convert_action(
 		}
 		t = token_producer->get_next_Token(); // action
 		if (t.str == "initialize") {// init action can have a name, dont know why
-			action_tag = "initialize";
-			actor_data.set_init();
+			is_init = true;
 		}
-		method_name = action_tag + "$" + action_name;
+		if (action_tag.empty()) {
+			method_name = action_name;
+		}
+		else if (action_name.empty()) {
+			method_name = action_tag;
+		}
+		else {
+			method_name = action_tag + "_" + action_name;
+		}
+	}
+
+	if (is_init) {
+		if (c->get_target_language() == Target_Language::c) {
+			method_name = actor_data.get_class_name() + "_initialize";
+		}
+		else {
+			method_name = "initialize";
+		}
+		actor_data.set_init();
 	}
 
 	// Add it to the list to inform the scheduler about this action even it doesn't read/write channels
@@ -701,27 +782,46 @@ std::string convert_action(
 	action->set_function_name(method_name);
 
 	actor_data.get_symbol_map()[method_name] = "";
+	bool insert_separator{ false };
+	bool added_parameters{ false };
 	//create function head
-	output.append(prefix + "void " + method_name + "(");
+
+	if (c->get_target_language() == Target_Language::c) {
+		if (!is_init) {
+			output.append("static ");
+		}
+		output.append("void " + method_name + "(");
+		output.append(actor_data.get_class_name() + "_t *_g");
+		insert_separator = true;
+		added_parameters = true;
+	}
+	else {
+		output.append("void " + method_name + "(");
+	}
 	if (!input_channel_parameters && !output_channel_parameters) {
-		output.append("void) { \n");
+		if (c->get_target_language() == Target_Language::cpp) {
+			output.append("void");
+		}
+		output.append(") { \n");
 	}
 	//convert fifo access
 	t = token_producer->get_next_Token();//start of the fifo part - fifo name
 
-	bool insert_separator{ false };
-	bool added_parameters{ false };
 	while (t.str != "==>") {
 		//input fifos
-		std::tuple<std::string, std::string> tmp = convert_input_FIFO_access(t, *token_producer, actor_data, local_symbol_map,
+		std::tuple<std::string, std::string> tmp = convert_input_FIFO_access(t, *token_producer, actor_data, local_symbol_map, local_type_map,
 		prefix + "\t", method_name, input_channel_parameters, unused_in_channels);
 		middle_of_output.append(get<1>(tmp));
-		output.append(get<0>(tmp));
-		insert_separator = input_channel_parameters;
 		if (input_channel_parameters && !get<0>(tmp).empty()) {
 			added_parameters = true;
+			if (insert_separator) {
+				output.append(", ");
+			}
+			insert_separator = input_channel_parameters;
+			output.append(get<0>(tmp));
 		}
 	}
+
 	t = token_producer->get_next_Token(); //get next token, that should contain first output fifo name, if any are accessed
 	while ((t.str != "do") && (t.str != "guard") && (t.str != "var") && (t.str != "end")
 		&& (t.str != "endaction"))
@@ -760,9 +860,24 @@ std::string convert_action(
 			t = token_producer->get_next_Token();
 		}
 	}
+
 	//convert the body of the action
 	if ((t.str != "end") && (t.str != "endaction")) {
-		output.append(convert_action_body(t, *token_producer, actor_data, local_symbol_map, prefix + "\t"));
+		std::string tmp = convert_action_body(t, *token_producer, actor_data, local_symbol_map, local_type_map, prefix + "\t");
+		
+		if (c->get_target_language() == Target_Language::c) {
+			for (auto r : actor_data.get_replacement_map()) {
+				replace_variables(tmp, r.first, r.second);
+			}
+		}
+
+		output.append(tmp);
+	}
+
+	if (c->get_target_language() == Target_Language::c) {
+		for (auto r : actor_data.get_replacement_map()) {
+			replace_variables(end_of_output, r.first, r.second);
+		}
 	}
 
 	return output + end_of_output + prefix + "}\n";

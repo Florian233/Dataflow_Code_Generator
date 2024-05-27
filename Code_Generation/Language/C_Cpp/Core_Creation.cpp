@@ -1,10 +1,12 @@
-#include "Code_Generation.hpp"
+#include "Generate_C_Cpp.hpp"
 #include "Config/config.h"
 #include "Config/debug.h"
-#include "Scheduling/Scheduling.hpp"
+#include "Scheduling.hpp"
 #include <string>
 #include <fstream>
 #include <map>
+#include <filesystem>
+#include "ABI/abi.hpp"
 
 /* Map each channel to the concrete channel implementation that is used for this channel. */
 static std::map<std::string, std::string> channel_impl_map;
@@ -38,12 +40,19 @@ static std::string generate_actor_constructor_parameters(
 	bool static_alloc)
 {
 	std::string result;
+	Config* c = c->getInstance();
 
+	if (c->get_target_language() == Target_Language::c) {
+		result.append("\n\t\t.actor_name = ");
+	}
 	result.append("\"" + name + "\"");
 	for (auto param_it = data->get_parameter_order().begin();
 		param_it != data->get_parameter_order().end(); ++param_it)
 	{
 		result.append(", ");
+		if (c->get_target_language() == Target_Language::c) {
+			result.append("\n\t\t." + *param_it + " = ");
+		}
 		if (actorport_channel_map.contains(name + "_" + *param_it)) {
 			if (static_alloc) {
 				result.append("&");
@@ -61,7 +70,12 @@ static std::string generate_actor_constructor_parameters(
 			}
 			else {
 				if (instance->is_port(*param_it)) {
-					result.append("nullptr");
+					if (c->get_target_language() == Target_Language::c) {
+						result.append("NULL");
+					}
+					else {
+						result.append("nullptr");
+					}
 				}
 				else {
 					// No Parameter value in the network, no default parameter = bug
@@ -76,6 +90,7 @@ static std::string generate_actor_constructor_parameters(
 		}
 
 	}
+	
 	return result;
 }
 
@@ -112,7 +127,6 @@ static std::string generate_channels(
 			exit(5);
 		}
 
-		channel_impl_map[name] = "Data_Channel";
 		std::string typeSource = find_channel_type(it->get_src_port(), it->get_source()->get_actor()->get_out_buffers());
 		std::string typeSink = find_channel_type(it->get_dst_port(), it->get_sink()->get_actor()->get_in_buffers());
 		if (typeSource != typeSink) {
@@ -120,26 +134,24 @@ static std::string generate_channels(
 				"Types of " + it->get_source()->get_name() + "." + it->get_src_port()
 				+ " and " + it->get_sink()->get_name() + "." + it->get_dst_port() + " don't match."};
 		}
-		if (c->get_static_alloc()) {
-			result.append("Data_Channel<" + typeSource + "> " + name);
-		}
-		else {
-			result.append("Data_Channel<" + typeSource + "> *" + name + "; \n");
-		}
-		channel_type_map[name] = typeSource;
-		if (it->get_specified_size() == c->get_FIFO_size()) {
-			channel_size_map[name] = "CHANNEL_SIZE";
-		}
-		else {
-			channel_size_map[name] = std::to_string(it->get_specified_size());
-		}
-
-		if (c->get_static_alloc()) {
-			result.append("{" + channel_size_map[name] + "};\n");
-		}
-
 		actorport_channel_map[it->get_source()->get_name() + "_" + it->get_src_port()] = name;
 		actorport_channel_map[it->get_sink()->get_name() + "_" + it->get_dst_port()] = name;
+
+		channel_type_map[name] = typeSource;
+		std::string chan_sz;
+		if (it->get_specified_size() == c->get_FIFO_size()) {
+			 chan_sz = "CHANNEL_SIZE";
+		}
+		else {
+			chan_sz = std::to_string(it->get_specified_size());
+		}
+		channel_size_map[name] = chan_sz;
+
+		std::pair<std::string, std::string> decl;
+		ABI_CHANNEL_DECL(c, decl, name, chan_sz, typeSource, c->get_static_alloc(), "");
+
+		channel_impl_map[name] = decl.second;
+		result.append(decl.first);
 	}
 
 	return result;
@@ -165,6 +177,9 @@ static std::string generate_actor_instances(
 		}
 
 		std::string t = (*it)->get_conversion_data().get_class_name();
+		if (c->get_target_language() == Target_Language::c) {
+			t.append("_t");
+		}
 		if (!c->get_static_alloc()) {
 			t.append("*");
 		}
@@ -187,6 +202,9 @@ static std::string generate_actor_instances(
 		it != dpn->get_composit_actors().end(); ++it)
 	{
 		std::string t = (*it)->get_conversion_data().get_class_name();
+		if (c->get_target_language() == Target_Language::c) {
+			t.append("_t");
+		}
 		t.append("* ");
 		t.append((*it)->get_name());
 		result.append(t + ";\n");
@@ -214,20 +232,38 @@ static std::string generate_main(
 	if (!c->get_static_alloc()) {
 		//initialize channels
 		for (auto it = channel_impl_map.begin(); it != channel_impl_map.end(); ++it) {
-
-			std::string t = it->first + " = new " + it->second + "<" + channel_type_map[it->first]
-				+ ">(" + channel_size_map[it->first] + ");";
-			result.append("\t" + t + "\n");
+			std::string tmp;
+			ABI_CHANNEL_INIT(c, tmp, it->first, it->second, channel_type_map[it->first], channel_size_map[it->first], "\t");
+			result.append(tmp);
 		}
+	}
 
-
-		//initialize actor instances and call their init function
-		for (auto it = actor_data_map.begin(); it != actor_data_map.end(); ++it) {
-			result.append("\t" + it->first + " = new ");
-			result.append(it->second->get_class_name() + "(");
-			result.append(generate_actor_constructor_parameters(it->first, it->second, false));
-			result.append(");\n");
-			result.append("\t" + it->first + "->init();\n");
+	//initialize actor instances and call their init function
+	for (auto it = actor_data_map.begin(); it != actor_data_map.end(); ++it) {
+		if (c->get_target_language() == Target_Language::cpp) {
+			if (!c->get_static_alloc()) {
+				result.append("\t" + it->first + " = new ");
+				result.append(it->second->get_class_name() + "(");
+				result.append(generate_actor_constructor_parameters(it->first, it->second, false));
+				result.append(");\n");
+				result.append("\t" + it->first + "->initialize();\n");
+			}
+			else {
+				result.append("\t" + it->first + ".initialize();\n");
+			}
+		}
+		else {
+			if (!c->get_static_alloc()) {
+				std::string tmp;
+				std::string type = it->second->get_class_name() + "_t";
+				ABI_ALLOC(c, tmp, it->first, "sizeof(" + type + ")", type, "\t");
+				result.append(tmp);
+				result.append("\t*" + it->first + " = ("+type+"){" + generate_actor_constructor_parameters(it->first, it->second, false) + "}; \n");
+				result.append("\t" + it->second->get_class_name() + "_initialize(" + it->first + ");\n");
+			}
+			else {
+				result.append("\t" + it->second->get_class_name() + "_initialize(&" + it->first + ");\n");
+			}
 		}
 	}
 
@@ -244,24 +280,41 @@ static std::string generate_main(
 		}
 		result.append("\t}\n");
 	}
-	else {
-		unsigned i;
-		for (i = 0; i < (c->get_cores()-1); ++i) {
-			result.append("\tstd::thread t" + std::to_string(i) + "(" + global_scheduling_routines[i] + ");\n");
+	else if (c->get_cores() > 1) {
+		std::vector<std::string> identifiers;
+		for (unsigned i = 0; i < c->get_cores(); ++i) {
+			std::string tmp;
+			std::string identifier;
+			ABI_THREAD_CREATE(c, tmp, global_scheduling_routines[i], "\t", identifier);
+			result.append(tmp);
+			identifiers.push_back(identifier);
 		}
-		result.append("\t" + global_scheduling_routines[i] + "();\n");
+		for (auto i = identifiers.begin(); i != identifiers.end(); ++i) {
+			std::string tmp;
+			ABI_THREAD_START(c, tmp, *i, "\t");
+			result.append(tmp);
+		}
+		for (auto i = identifiers.begin(); i != identifiers.end(); ++i) {
+			std::string tmp;
+			ABI_THREAD_JOIN(c, tmp, *i, "\t");
+			result.append(tmp);
+		}
+	}
+	else {
+		result.append("\t" + global_scheduling_routines[0] + "();\n");
 	}
 	result.append("\treturn 0;\n");
 	result.append("}");
 	return result;
 }
 
-void Code_Generation::generate_core(
+std::pair<Code_Generation_C_Cpp::Header, Code_Generation_C_Cpp::Source>
+Code_Generation_C_Cpp::generate_core(
 	IR::Dataflow_Network* dpn,
 	Optimization::Optimization_Data_Phase1* opt_data1,
 	Optimization::Optimization_Data_Phase2* opt_data2,
 	Mapping::Mapping_Data* map_data,
-	std::string include_code)
+	std::vector<std::string>& includes)
 {
 #ifdef DEBUG_MAIN_GENERATION
 	std::cout << "Main Generation." << std::endl;
@@ -272,17 +325,32 @@ void Code_Generation::generate_core(
 	std::string code{};
 
 	if (map_data->actor_sharing) {
-		code.append("#include <atomic>\n");
+		ABI_ATOMIC_HEADER(c, code);
 	}
 	if (!c->get_omp_tasking()) {
-		code.append("#include <thread>\n");
+		std::string tmp;
+		ABI_THREAD_HEADER(c, tmp);
+		code.append(tmp);
 	}
 	if (c->get_list_scheduling()) {
+		if (c->get_target_language() == Target_Language::c) {
+			std::cout << "List scheduling not implemented for C code generation!" << std::endl;
+		}
 		code.append("#include <vector>\n");
+	}
+	{
+		std::string tmp;
+		ABI_ALLOC_HEADER(c, tmp);
+		code.append(tmp);
 	}
 
 	code.append("\n#define CHANNEL_SIZE " + std::to_string(c->get_FIFO_size()) + "\n");
 	code.append("\n//#define PRINT_FIRINGS\n\n");
+
+	std::string include_code;
+	for (auto t : includes) {
+		include_code.append("#include \"" + t + "\"\n");
+	}
 
 	code.append(include_code);
 
@@ -296,12 +364,22 @@ void Code_Generation::generate_core(
 	code.append("\n\n");
 	code.append(generate_main(dpn, opt_data1, opt_data2, map_data));
 
-	std::string path{ c->get_target_dir() };
+	std::filesystem::path path{ c->get_target_dir() };
+	std::string filename;
+	if (c->get_target_language() == Target_Language::c) {
+		filename = "main.c";
+	}
+	else {
+		filename = "main.cpp";
+	}
+	path /= filename;
 
-	std::ofstream output_file{ path + "\\main.cpp" };
+	std::ofstream output_file{ path };
 	if (output_file.bad()) {
-		throw Code_Generation_Exception{ "Cannot open the file " + path + "\\main.cpp" };
+		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path.string() };
 	}
 	output_file << code;
 	output_file.close();
+
+	return std::make_pair("", filename);
 }

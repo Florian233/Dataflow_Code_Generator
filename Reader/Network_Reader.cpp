@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <set>
 #include "Config/config.h"
+#include <filesystem>
 using namespace rapidxml;
 
 //set for all network instance ids
@@ -17,7 +18,7 @@ static std::set<std::string> network_instance_ids;
 	Function tests if a file specified by the input parameter exists.
 	If it exists it returns true. Otherwise it returns false.
 */
-static inline bool file_exists(const char* f)
+static inline bool file_exists(std::filesystem::path f)
 {
 	std::ifstream stream(f);
 	return stream.good();
@@ -27,8 +28,9 @@ static inline bool file_exists(const char* f)
 	The function tests if the file path_string.xdf exists.
 	If yes it return true, otherwise it returns false.
 */
-static inline bool network_file(std::string path_string) {
-	if (file_exists(path_string.append(".xdf").c_str())) {
+static inline bool network_file(std::filesystem::path path_string) {
+	path_string += ".xdf";
+	if (file_exists(path_string)) {
 		return true;
 	}
 	return false;
@@ -184,20 +186,20 @@ static void parse_network(
 			{
 				if (strcmp(instance_node->name(), "Class") == 0) {
 					const rapidxml::xml_attribute<>* a = instance_node->first_attribute();
-					std::string path_string{ path };
-					path_string.append("\\");
+					std::filesystem::path path_string{ path };
 					std::string str{ a->value() };
-					std::replace(str.begin(), str.end(), '.', '\\');
-					path_string.append(str);
+					std::replace(str.begin(), str.end(), '.', static_cast<char>(std::filesystem::path::preferred_separator));
+					path_string /= str;
 					if (network_file(path_string)) {
 						network_instances.insert(id_attribute->value());
-						path_string.append(".xdf");
+						path_string += ".xdf";
 						network_instance_ids.insert(prefix + id_attribute->value());
-						start_parsing(path_string, path, dpn, std::string{ prefix + id_attribute->value() } + "_", false);
+						std::string tmp = path_string.string();
+						start_parsing(tmp, path, dpn, std::string{prefix + id_attribute->value()} + "_", false);
 					}
 					else {
-						path_string.append(".cal");
-						dpn->add_actors_class_path(a->value(), path_string);
+						path_string += ".cal";
+						dpn->add_actors_class_path(a->value(), path_string.string());
 						dpn->add_id_class(prefix + id_attribute->value(), a->value());
 					}
 
@@ -300,7 +302,8 @@ static void start_parsing(
 	Top_network_buffer << network_file.rdbuf();
 	std::string str_to_parse = Top_network_buffer.str();
 	char* buffer = new char[str_to_parse.size() + 1];
-	strcpy_s(buffer, str_to_parse.size() +1, str_to_parse.c_str());
+	std::size_t length = str_to_parse.copy(buffer, str_to_parse.size() + 1);
+	buffer[length] = '\0';
 	xml_document<char> *doc = new xml_document<char>;
 	doc->parse<0>(buffer);
 	parse_network(doc->first_node(), path, dpn, prefix, top);
@@ -395,7 +398,8 @@ IR::Dataflow_Network* Network_Reader::read_network(void) {
 
 #ifdef DEBUG_READER_PRINT_EDGES
 	for (auto it = dpn->get_edges().begin(); it != dpn->get_edges().end(); ++it) {
-		printf("Edge: %s.%s to %s.%s\n", it->get_src_id().c_str(), it->get_src_port().c_str(), it->get_dst_id().c_str(), it->get_dst_port().c_str());
+		std::cout << "Edge: " << it->get_src_id() << "." << it->get_src_port() << " to "
+			<< it->get_dst_id() << "." << it->get_dst_port() << std::endl;
 	}
 #endif
 

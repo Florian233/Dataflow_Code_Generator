@@ -6,7 +6,7 @@
 #include "IR/Dataflow_Network.hpp"
 #include "IR/Actor.hpp"
 #include "Actor_Classification/Actor_Classification.hpp"
-#include "Scheduling_Data.hpp"
+#include "Scheduling_Lib/Scheduling_Data.hpp"
 #include "Mapping/Mapping.hpp"
 #include "Optimization_Phase1/Optimization_Phase1.hpp"
 #include "Optimization_Phase2/Optimization_Phase2.hpp"
@@ -19,14 +19,16 @@ namespace Scheduling {
 	 */
 	std::string generate_local_scheduler(
 		// map: function_name -> data in the order of the parameters of the generated function
-		std::map<std::string, std::vector< Channel_Schedule_Data > >& actions,
+		Actor_Conversion_Data &conversion_data,
 		//map function_name -> guard
 		std::map<std::string, std::string>& action_guard,
 		std::vector<IR::FSM_Entry>& fsm,
 		std::vector<IR::Priority_Entry>& priorities,
 		Actor_Classification input_classification,
 		Actor_Classification output_classification,
-		std::string prefix);
+		std::string prefix,
+		std::string schedule_function_name,
+		std::string schedule_function_parameter);
 
 	/* Generate a global scheduler based on the mapping stored in the IR of the actor instances
 	 * and the Configuration.

@@ -4,7 +4,7 @@
 
 namespace Optimization {
 // Prefix for the name of composit actors to avoid name conflicts
-#define COMPOSIT_ACTOR_PREFIX "composit$"
+#define COMPOSIT_ACTOR_PREFIX "composit_"
 
 	// Not used yet, reserved for future use
 	struct Optimization_Data_Phase2 {

@@ -30,7 +30,8 @@ void Mapping::read_mapping(
 		Top_network_buffer << network_file.rdbuf();
 		std::string str_to_parse = Top_network_buffer.str();
 		char* buffer = new char[str_to_parse.size() + 1];
-		strcpy_s(buffer, str_to_parse.size() + 1, str_to_parse.c_str());
+		std::size_t length = str_to_parse.copy(buffer, str_to_parse.size() + 1);
+		buffer[length] = '\0';
 		doc->parse<0>(buffer);
 	}
 

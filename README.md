@@ -1,13 +1,13 @@
 # Code Generator for Dataflow Networks
 
-This code generator can convert dataflow networks specified in CAL and XDF to C++ code.
+This code generator can convert dataflow networks specified in CAL and XDF to C/C++ code.
 The scope of this tool is to generate multi-threaded software as dataflow networks are well
 suited for this purpose.
 It shall serve as exploration tool for different optimization and mapping strategies.
 
 This project is work in progress and, therefore, proper functionality cannot be guaranteed.
 
-Please note that this tool can convert CAL+XDF networks to C++, but it requires valid
+Please note that this tool can convert CAL+XDF networks to C/C++, but it requires valid
 specifications as input!
 Only partial checks are applied, in the worst case the tool might occasionally assume that
 the input is a completely valid CAL+XDF specification.
@@ -141,10 +141,11 @@ The code generator provides the following command line options:
 * -h / --help : Print the help message that also displays all command line options
 * -w \<directory\> : Specify the output directory for the generated code
 * -d \<directory\> : Specifiy the directory of the sources
-* -n \<file\> : Specifiy the top network that shall be converted to C++
+* -n \<file\> : Specifiy the top network that shall be converted to the target language
 * --orcc : Add ORCC compatibility, the generated code can parse the command lines and provides the options.h header that is required by the majority of the native code. This code is copied from ORCC generated code. It allows to use the ORCC demo applications, e.g. for testing.
 * --cmake : Generates a simple CMake file to build the generated project. Additional files, e.g. required to fulfill the @native references must be added manually!
 * --static_alloc : Allocate channels and actions in the main statically and avoid usage of the new operator
+* --abi=\<stdc|stdcpp\> : Target ABI/language, c++ is the default
 
 ### Communication Channels
 * -s \<number\> : The default size of the buffers. This size is used if no optimization step determines another size or the size of the channel is given in the XDF file.

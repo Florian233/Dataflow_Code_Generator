@@ -1,5 +1,6 @@
 #include "Scheduling_Lib.hpp"
 #include <algorithm>
+#include "Config/config.h"
 
 void Scheduling::find_actors_for_core(
 	unsigned core,
@@ -46,7 +47,7 @@ std::vector<std::string> Scheduling::find_schedulable_actions(
 				for (auto it = actions.begin(); it != actions.end(); ++it) {
 					if ((fsm_it->action == it->first)
 						|| ((it->first.find(fsm_it->action) == 0)
-							&& (it->first[fsm_it->action.size()] == '$')))
+							&& (it->first[fsm_it->action.size()] == '_')))
 					{
 						output.push_back(it->first);
 					}
@@ -69,7 +70,7 @@ std::string Scheduling::find_next_state(
 	for (auto fsm_it = fsm.begin(); fsm_it != fsm.end(); ++fsm_it) {
 		if ((fsm_it->state == current_state)
 			&& ((fsm_it->action == fired_action)
-				|| ((fired_action.find(fsm_it->action) == 0) && (fired_action[fsm_it->action.size()] == '$'))))
+				|| ((fired_action.find(fsm_it->action) == 0) && (fired_action[fsm_it->action.size()] == '_'))))
 		{
 			return fsm_it->next_state;
 		}
@@ -77,7 +78,7 @@ std::string Scheduling::find_next_state(
 	}
 
 	//cannot find the next state
-	throw Scheduling::Scheduler_Generation_Exception{ "Cannot find the next state. Current state:" + current_state + ", Fired Action:" + fired_action };
+	throw Scheduling::Scheduling_Lib_Exception{ "Cannot find the next state. Current state:" + current_state + ", Fired Action:" + fired_action };
 }
 
 std::set<std::string> Scheduling::get_all_states(
@@ -101,6 +102,10 @@ std::string Scheduling::get_action_in_parameters(
 	std::map<std::string, std::vector<Scheduling::Channel_Schedule_Data> >& actions)
 {
 	std::string output;
+	Config* c = c->getInstance();
+	if (c->get_target_language() == Target_Language::c) {
+		output.append("_g");
+	}
 
 	for (auto it = actions[action].begin(); it != actions[action].end(); ++it) {
 		if (!it->in || it->unused_channel || !it->parameter_generated) {
@@ -109,7 +114,7 @@ std::string Scheduling::get_action_in_parameters(
 		if (!output.empty()) {
 			output.append(", ");
 		}
-		output.append(it->channel_name + "$param");
+		output.append(it->channel_name + "_param");
 	}
 
 	return output;

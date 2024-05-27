@@ -5,6 +5,17 @@
 #include <string>
 #include "debug.h"
 
+enum Target_Language
+{
+    cpp,
+    c,
+};
+
+enum Target_ABI {
+    stdc,
+    stdcpp,
+};
+
 /* Singleton to store the configuration data parsed from command line parameters! */
 class Config {
     static Config* instance;
@@ -16,6 +27,8 @@ class Config {
     bool orcc_compat{ false };
     bool cmake{ false };
     bool static_alloc{ false };
+    Target_Language target_language{ cpp };
+    Target_ABI target_ABI{ stdcpp };
 
     // Mapping strategies
     bool mapping_all_to_all{ false };
@@ -124,6 +137,22 @@ public:
 
     bool get_static_alloc(void) {
         return this->static_alloc;
+    }
+
+    void set_target_language(Target_Language t) {
+        target_language = t;
+    }
+
+    Target_Language get_target_language(void) {
+        return target_language;
+    }
+
+    void set_target_ABI(Target_ABI t) {
+        target_ABI = t;
+    }
+
+    Target_ABI get_target_ABI(void) {
+        return target_ABI;
     }
 
     void set_mapping_strategy_all_to_all(void) {

@@ -1,6 +1,8 @@
 #include "Code_Generation.hpp"
 #include "Config/config.h"
 #include <set>
+#include <filesystem>
+#include "Language/C_Cpp/Generate_C_Cpp.hpp"
 
 /* Differences of the actor instance from the base actor.
  * Differences might stem from unconnected ports or DCE.
@@ -67,29 +69,6 @@ static std::set<std::string> get_unconnected_ports(IR::Actor_Instance *instance,
 	return result;
 }
 
-/* Generate a simple base class all other actors inherit from.
- * This allows storing all actors in one list.
- */
-static void generate_base_class(void) {
-	std::string code =
-		"#pragma once\n\n"
-		"class Actor {\n"
-		"public:\n"
-		"\tvirtual void init(void) = 0;\n"
-		"\tvirtual void schedule(void) = 0;\n"
-		"};";
-
-	Config* c = c->getInstance();
-	std::string path{ c->get_target_dir() };
-
-	std::ofstream output_file{ path + "\\Actor.hpp" };
-	if (output_file.bad()) {
-		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path + "\\Actor.hpp" };
-	}
-	output_file << code;
-	output_file.close();
-}
-
 void Code_Generation::generate_code(
 	IR::Dataflow_Network* dpn,
 	Optimization::Optimization_Data_Phase1* opt_data1,
@@ -97,18 +76,31 @@ void Code_Generation::generate_code(
 	Mapping::Mapping_Data* map_data)
 {
 	Config* c = c->getInstance();
+	std::vector<std::string> sources;
+	std::vector<std::string> includes;
+	std::string channel_include;
 
-	std::string include_code;
-
-	if (c->get_orcc_compat()) {
-		generate_ORCC_compatibility_layer(c->get_target_dir());
-		include_code.append("#include \"options.h\"\n");
+	if ((c->get_target_language() == Target_Language::c)
+		|| (c->get_target_language() == Target_Language::cpp))
+	{
+		auto tmp = Code_Generation_C_Cpp::start_code_generation(dpn, opt_data1, opt_data2, map_data);
+		if (!tmp.first.empty()) {
+			includes.push_back(tmp.first);
+		}
+		if (!tmp.second.empty()) {
+			sources.push_back(tmp.second);
+		}
 	}
 
-	generate_base_class();
 
-	generate_channel_code(opt_data1, opt_data2, map_data);
-	include_code.append("#include \"Channel.hpp\"\n");
+	auto y = Code_Generation_C_Cpp::generate_channel_code(opt_data1, opt_data2, map_data);
+	if (!y.first.empty()) {
+		includes.push_back(y.first);
+		channel_include = "#include\"" + y.first + "\"\n";
+	}
+	if (!y.second.empty()) {
+		sources.push_back(y.second);
+	}
 
 	/*
 	Actor instances of the same actor might not be equivalent after removing dead code etc.
@@ -262,29 +254,36 @@ void Code_Generation::generate_code(
 	for (auto it = actor_variants_map.begin(); it != actor_variants_map.end(); ++it) {
 		for (auto variant = it->second.begin(); variant != it->second.end(); ++variant) {
 			variant->actor->get_conversion_data().set_class_name(variant->name);
-			std::string i = generate_actor_code(variant->actor, variant->name, variant->unused_actions,
-				variant->unused_in_channels, variant->unused_out_channels, opt_data1, opt_data2, map_data);
-			include_code.append(i);
+			auto i = Code_Generation_C_Cpp::generate_actor_code(variant->actor, variant->name, variant->unused_actions,
+				variant->unused_in_channels, variant->unused_out_channels, opt_data1, opt_data2, map_data, channel_include);
+			if (!i.first.empty()) {
+				includes.push_back(i.first);
+			}
+			if (!i.second.empty()) {
+				sources.push_back(i.second);
+			}
 		}
 	}
 
 	for (auto it = dpn->get_composit_actors().begin();
 		it != dpn->get_composit_actors().end(); ++it)
 	{
-		std::string i = generate_composit_actor_code(*it, opt_data1, opt_data2, map_data);
-		include_code.append(i);
+		auto i = Code_Generation_C_Cpp::generate_composit_actor_code(*it, opt_data1, opt_data2, map_data, channel_include);
+		if (!i.first.empty()) {
+			includes.push_back(i.first);
+		}
+		if (!i.second.empty()) {
+			sources.push_back(i.second);
+		}
 	}
 
-	generate_core(dpn, opt_data1, opt_data2, map_data, include_code);
+	auto i = Code_Generation_C_Cpp::generate_core(dpn, opt_data1, opt_data2, map_data, includes);
+	//ignorning first element as it is the header only adding source to sources
+	sources.push_back(i.second);
 
-	if (c->get_cmake()) {
-		std::string path = c->get_target_dir();
-		std::string source_files = "\"main.cpp\"";
-		if (c->get_orcc_compat()) {
-			source_files.append(" \"orcc_compatibility.cpp\"");
-		}
-		std::string network_name = dpn->get_name();
-
-		generate_cmake_file(network_name, source_files, path);
+	if ((c->get_target_language() == Target_Language::c) ||
+		(c->get_target_language() == Target_Language::cpp))
+	{
+		Code_Generation_C_Cpp::end_code_generation(dpn, opt_data1, opt_data2, map_data, includes, sources);
 	}
 }

@@ -18,7 +18,7 @@ class Tokenizer : public Token_Container {
 	//no reference because i want to be able to destroy the string that is used as a parameter
 	std::string str_to_tokenize;
 	size_t index{ 0 };
-	Converter_RVC_Cpp::Context context = Converter_RVC_Cpp::Context::None;
+	Conversion_Helper::Context context = Conversion_Helper::Context::None;
 
 	/*
 		Function to skip comments, white spaces, tabs and newlines.
@@ -108,109 +108,109 @@ public:
 			if (str_to_tokenize[index + 1] == '*') {
 				index += 2;
 				current_token = "**";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else {
 				++index;
 				current_token = "*";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
 		case '/':
 			index++;
 			current_token = "/";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case ':':
 			if (str_to_tokenize[index + 1] == '=') {
 				index += 2;
 				current_token = ":=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else {
 				++index;
 				current_token = ":";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
 		case ';':
 			++index;
 			current_token = ";";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '=':
 			if ((str_to_tokenize[index + 1] == '=') && (str_to_tokenize[index + 2] == '>')) {
 				index += 3;
 				current_token = "==>";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '=') {
 				index += 2;
 				current_token = "==";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else {
 				++index;
 				current_token = "=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
 		case ',':
 			++index;
 			current_token = ",";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '(':
 			++index;
 			current_token = "(";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case ')':
 			++index;
 			current_token = ")";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '[':
 			++index;
 			current_token = "[";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case ']':
 			++index;
 			current_token = "]";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '&':
 			if ((str_to_tokenize[index + 1] == '&') && (str_to_tokenize[index + 2] == '&')) {
 				index += 3;
 				current_token = "&&&";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '&' ) {
 				index += 2;
 				current_token = "&&";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else {
 				++index;
 				current_token = "&";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
@@ -218,25 +218,25 @@ public:
 			if ((str_to_tokenize[index + 1] == '<') && (str_to_tokenize[index + 2] == '<')) {
 				index += 3;
 				current_token = "<<<";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '<') {
 				index += 2;
 				current_token = "<<";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '=') {
 				index += 2;
 				current_token = "<=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = "<";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
@@ -244,25 +244,25 @@ public:
 			if ((str_to_tokenize[index + 1] == '>') && (str_to_tokenize[index + 2] == '>')) {
 				index += 3;
 				current_token = ">>>";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '>') {
 				index += 2;
 				current_token = ">>";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '=') { 
 				index += 2;
 				current_token = ">=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = ">";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
@@ -270,51 +270,51 @@ public:
 			if ((str_to_tokenize[index + 1] == '|') && (str_to_tokenize[index + 2] == '|')) {
 				index += 3;
 				current_token = "|||";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '|') { 
 				index += 2;
 				current_token = "||";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = "|";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
 		case '\"':
 			++index;
 			current_token = "\"";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '{':
 			++index;
 			current_token = "{";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '}':
 			++index;
 			current_token = "}";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '.':
 			if (str_to_tokenize[index + 1] == '.') { 
 				index += 2;
 				current_token = "..";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = ".";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
@@ -322,38 +322,38 @@ public:
 			if (str_to_tokenize[index + 1] == '=') { 
 				index += 2;
 				current_token = "!=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = "!";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 		case '-':
 			if ((str_to_tokenize[index + 1] == '-') && (str_to_tokenize[index + 2] == '>')) { 
 				index += 3;
 				current_token = "-->";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '-'){
 				index += 2;
 				current_token = "--";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else if (str_to_tokenize[index + 1] == '=') { 
 				index += 2;
 				current_token = "-=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = "-";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
@@ -361,32 +361,32 @@ public:
 			if (str_to_tokenize[index + 1] == '=') { 
 				index += 2;
 				current_token = "+=";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			if (str_to_tokenize[index + 1] == '+') { 
 				index += 2;
 				current_token = "++";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			else { 
 				++index;
 				current_token = "+";
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			break;
 		case '\\':
 			++index;
 			current_token = "\\";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		case '?':
 			++index;
 			current_token = "?";
-			Converter_RVC_Cpp::construct_supported(context, current_token);
+			Conversion_Helper::construct_supported(context, current_token);
 			return Token{ current_token };
 			break;
 		default:
@@ -397,7 +397,7 @@ public:
 		//run until a special character is found. If one of those is found don't add it to the token and return all characters that have been added to this token yet.
 		for (;;) {
 			if (index == str_to_tokenize.size()) {
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 			}
 			char& character = str_to_tokenize[index];
@@ -428,7 +428,7 @@ public:
 			case ',':
 			case '\\':
 			case '?':
-				Converter_RVC_Cpp::construct_supported(context, current_token);
+				Conversion_Helper::construct_supported(context, current_token);
 				return Token{ current_token };
 				break;
 			default:current_token += character; ++index;
@@ -438,11 +438,11 @@ public:
 		throw Tokenizer_Exception{ "Tokenizer Index out of Bounds" };
 	}
 
-	void set_context(Converter_RVC_Cpp::Context c) {
+	void set_context(Conversion_Helper::Context c) {
 		context = c;
 	}
 
-	Converter_RVC_Cpp::Context get_context(void) {
+	Conversion_Helper::Context get_context(void) {
 		return context;
 	}
 };

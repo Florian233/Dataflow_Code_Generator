@@ -17,7 +17,7 @@ static void create_actor_objects(IR::Dataflow_Network* dpn) {
 		it != dpn->get_actors_class_path_map().end(); ++it)
 	{
 #ifdef DEBUG_READER_ACTORS
-		printf("Creating actor %s with path %s.\n", it->first.c_str(), it->second.c_str());
+		std::cout << "Creating actor " << it->first << " with path " << it->second << "." << std::endl;
 #endif
 		IR::Actor* a = new IR::Actor(it->first, it->second);
 		actor_map[it->first] = a;
@@ -40,7 +40,7 @@ static IR::Actor_Instance* check_instance_and_create(
 		// Instance has not been created yet, create and assign.
 		IR::Actor_Instance* ret = new IR::Actor_Instance(id, actor_map[cal_class]);
 #ifdef DEBUG_READER_ACTORS
-		printf("Creating actor instance %s, referring to actor %s.\n", id.c_str(), cal_class.c_str());
+		std::cout << "Creating actor instance " << id <<", referring to actor " << cal_class << std::endl;
 #endif
 		instance_map[id] = ret;
 		dpn->add_actor_instance(ret);
@@ -107,6 +107,6 @@ void IR::Actor::read_actor(void) {
 	code = buffer.str();
 
 #ifdef DEBUG_READER_ACTORS
-	printf("Read file of actor %s.\n", class_name.c_str());
+	std::cout << "Read file of actor " << class_name << std::endl;
 #endif
 }

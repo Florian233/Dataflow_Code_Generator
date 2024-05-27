@@ -4,8 +4,9 @@
 #include <map>
 #include "Actor_Conversion_Data.hpp"
 #include "Exceptions.hpp"
+#include <filesystem>
 
-namespace Converter_RVC_Cpp {
+namespace Conversion_Helper {
 
 	/* Result of the conversion of an unit file.
 	 * Result is split into declarations and the remaining code.
@@ -31,7 +32,7 @@ namespace Converter_RVC_Cpp {
 		std::map<std::string, std::string>& symbol_map,
 		Actor_Conversion_Data& conversion_data,
 		const std::string source_dir,
-		const std::string path,
+		const std::filesystem::path path,
 		const std::string requested_symbol,
 		const std::string prefix = "");
 }

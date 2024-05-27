@@ -1,13 +1,14 @@
-#include "Code_Generation.hpp"
+#include "Code_Generation/Code_Generation.hpp"
+#include "ABI_stdcpp.hpp"
 #include "Config/config.h"
 #include "Config/debug.h"
 #include <string>
 #include <fstream>
+#include <filesystem>
 
 /* Generate the file Channel.hpp containing the Channel base class, the data channel derived class
  * and if required the control channel derived class that is not carring data explicitly.
  */
-
 std::string data_channel =
 	"#pragma once\n\n"
     "#include <cstdlib>\n\n"
@@ -231,26 +232,89 @@ std::string control_channel =
         "    }\n"
         "}";
 
-
-void Code_Generation::generate_channel_code(
-	Optimization::Optimization_Data_Phase1* opt_data1,
-	Optimization::Optimization_Data_Phase2* opt_data2,
-	Mapping::Mapping_Data* map_data)
+std::pair<ABI_stdcpp::Header, ABI_stdcpp::Source>
+ABI_stdcpp::generate_channel_code(bool cntrl_chan)
 {
 	Config* c = c->getInstance();
 
-	std::string path{ c->get_target_dir() };
+    std::filesystem::path path{ c->get_target_dir() };
+    path /= "Channel.hpp";
 
-	std::ofstream output_file{ path + "\\Channel.hpp"};
+	std::ofstream output_file{ path };
 	if (output_file.bad()) {
-		throw Code_Generation_Exception{ "Cannot open the file " + path + "\\Channel.hpp" };
+		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path.string() };
 	}
 	output_file << data_channel;
 
 	// only create control channel class if required
-	if (opt_data2->control_channel) {
+	if (cntrl_chan) {
 		output_file << "\n\n" << control_channel;
 	}
 
 	output_file.close();
+
+    return std::make_pair("Channel.hpp", "");
+}
+
+std::pair<std::string, ABI_stdcpp::Impl_Type> ABI_stdcpp::channel_decl(
+    std::string channel_name,
+    std::string size,
+    std::string type,
+    bool static_def,
+    std::string prefix)
+{
+    std::string p2, p1;
+    p2 = "Data_Channel<" + type +">";
+    p1 = prefix;
+    if (static_def) {
+        p1.append("Data_Channel<" + type + "> " + channel_name);
+        p1.append("{" + size + "};\n");
+    }
+    else {
+        p1.append("Data_Channel<" + type + "> *" + channel_name + "; \n");
+    }
+    return std::make_pair(p1, p2);
+}
+
+std::string ABI_stdcpp::channel_init(
+    std::string channel_name,
+    Impl_Type t,
+    std::string type,
+    std::string sz,
+    std::string prefix)
+{
+    std::string r = prefix + channel_name + " = new " + t + "(" + sz + "); \n";
+    return r;
+}
+
+std::string ABI_stdcpp::channel_read(
+    std::string channel)
+{
+    return channel + "->read()";
+}
+
+std::string ABI_stdcpp::channel_write(
+    std::string var,
+    std::string channel)
+{
+    return channel + "->write(" + var + ")";
+}
+
+std::string ABI_stdcpp::channel_prefetch(
+    std::string channel,
+    std::string offset)
+{
+    return channel + "->preview(" + offset + ")";
+}
+
+std::string ABI_stdcpp::channel_size(
+    std::string channel)
+{
+    return channel + "->size()";
+}
+
+std::string ABI_stdcpp::channel_free(
+    std::string channel)
+{
+    return channel + "->free()";
 }

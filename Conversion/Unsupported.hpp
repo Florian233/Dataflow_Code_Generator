@@ -3,7 +3,7 @@
 #include <string>
 #include "Exceptions.hpp"
 
-namespace Converter_RVC_Cpp {
+namespace Conversion_Helper {
 
 	/* Context of the tokens that shall be checked whether the contain unsupported keyword. 
 	 * Context is required as keywords can mean different things in different contexts.

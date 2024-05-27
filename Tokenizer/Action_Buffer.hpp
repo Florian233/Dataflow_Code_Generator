@@ -13,7 +13,6 @@ class Action_Buffer: public Buffer {
 				buffer_bracket(t, token_producer);
 			}
 			else if (t.str == "if") {
-				t = token_producer.get_next_Token();
 				buffer_scope(t, token_producer, "endif");
 			}
 			else if (t.str == "") {
@@ -27,7 +26,7 @@ class Action_Buffer: public Buffer {
 		// read rest
 		if (t.str == "do") {
 			//This is the only case where we have to differentiate this inside a buffer function
-			token_producer.set_context(Converter_RVC_Cpp::Context::Action_Body);
+			token_producer.set_context(Conversion_Helper::Context::Action_Body);
 			buffer_scope(t, token_producer, "endaction");
 		}
 		else {

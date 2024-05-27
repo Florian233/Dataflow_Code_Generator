@@ -1,6 +1,11 @@
 #pragma once
 
-#include "Scheduling.hpp"
+#include <vector>
+#include <string>
+#include <set>
+#include "Exceptions.hpp"
+#include "IR/Dataflow_Network.hpp"
+#include "Scheduling_Data.hpp"
 
 namespace Scheduling {
 
@@ -67,7 +72,7 @@ namespace Scheduling {
 				if (str1 == it->action_high) {
 					if ((str2 == it->action_low)
 						|| ((str2.find(it->action_low) == 0)
-							&& (str2[it->action_low.size() == '$'])))
+							&& (str2[it->action_low.size() == '_'])))
 					{
 						return true;
 					}
@@ -76,29 +81,29 @@ namespace Scheduling {
 				else if (str2 == it->action_high) {
 					if ((str1 == it->action_low)
 						|| ((str1.find(it->action_low) == 0)
-							&& (str1[it->action_low.size()] == '$')))
+							&& (str1[it->action_low.size()] == '_')))
 					{
 						return false;
 					}
 				}
 				//str1 > str2
 				else if ((str1.find(it->action_high) == 0)
-					&& (str1[it->action_high.size()] == '$'))
+					&& (str1[it->action_high.size()] == '_'))
 				{
 					if ((str2 == it->action_low)
 						|| ((str2.find(it->action_low) == 0)
-							&& (str2[it->action_low.size() == '$'])))
+							&& (str2[it->action_low.size() == '_'])))
 					{
 						return true;
 					}
 				}
 				//str2 > str1
 				else if ((str2.find(it->action_high) == 0)
-					&& (str2[it->action_high.size() == '$']))
+					&& (str2[it->action_high.size() == '_']))
 				{
 					if ((str1 == it->action_low)
 						|| ((str1.find(it->action_low) == 0)
-							&& (str1[it->action_low.size()] == '$')))
+							&& (str1[it->action_low.size()] == '_')))
 					{
 						return false;
 					}
@@ -115,4 +120,9 @@ namespace Scheduling {
 			std::set<std::string>& actors,
 			IR::Dataflow_Network *dpn,
 			std::vector<std::string>& sorted_actors);
+
+	class Scheduling_Lib_Exception : public Converter_Exception {
+	public:
+		Scheduling_Lib_Exception(std::string _str) : Converter_Exception{ _str } {};
+	};
 }

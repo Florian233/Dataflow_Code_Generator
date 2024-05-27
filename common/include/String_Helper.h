@@ -20,7 +20,10 @@ static inline void replace_all_substrings(
 
 static inline bool is_delimiter(char c) {
 	if ((c == '!') || (c == '=') || (c == '<') || (c == '>')
-		|| (c == '&') || (c == '|') || (c == '(') || (c == ')'))
+		|| (c == '&') || (c == '|') || (c == '(') || (c == ')') || (c == ' ')
+		||(c == '\t') || (c == '\n') || (c == '/') || (c == '+') || (c == '-')
+		|| (c == '{') || (c == '}') || (c == ':') || (c == '*') || (c == ';') || (c == '.')
+		|| (c == ',') || (c == '[') || (c == ']'))
 	{
 		return true;
 	}
@@ -48,9 +51,9 @@ static inline void replace_variables(
 		else {
 			after = is_delimiter(orig.at(pos + to_replace.length()));
 		}
-
 		if (before && after) {
-			orig.replace(pos, to_replace.length(), replacement);
+
+			orig = orig.replace(pos, to_replace.length(), replacement);
 			pos += replacement.length();
 		}
 		else {
@@ -63,4 +66,14 @@ static inline void remove_whitespaces(
 	std::string& orig)
 {
 	orig.erase(std::remove_if(orig.begin(), orig.end(), ::isspace), orig.end());
+}
+
+static inline void to_upper_case(std::string& str)
+{
+	std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+}
+
+static inline void to_lower_case(std::string& str)
+{
+	std::transform(str.begin(), str.end(), str.begin(), ::tolower);
 }

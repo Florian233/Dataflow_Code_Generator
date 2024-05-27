@@ -1,7 +1,7 @@
 #include "Unsupported.hpp"
 
 /* The corresponding endX are not checked here as there must be the X before that should trigger the exception. */
-void Converter_RVC_Cpp::construct_supported(Context context, std::string& t) {
+void Conversion_Helper::construct_supported(Context context, std::string& t) {
 	if (context == Context::None) {
 		return;
 	}

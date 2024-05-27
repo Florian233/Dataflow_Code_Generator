@@ -1,7 +1,7 @@
 #pragma once
 
 //Set by preprocessor define
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_NETWORK_READ

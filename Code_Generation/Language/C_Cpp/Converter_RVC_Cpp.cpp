@@ -1,11 +1,15 @@
 #include "Converter_RVC_Cpp.hpp"
 #include <iostream>
 #include <algorithm>
+#include "Config/config.h"
+#include <cstdlib>
+
 namespace Converter_RVC_Cpp {
 	std::string convert_inline_if_with_list_assignment(
 		std::string string_to_convert,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix,
 		std::string outer_expression);
 
@@ -61,6 +65,7 @@ namespace Converter_RVC_Cpp {
 			std::string list_name,
 			std::map<std::string, std::string>& global_map,
 			std::map<std::string, std::string>& local_map,
+			std::map<std::string, std::string>& symbol_type_map,
 			std::string prefix = "",
 			std::string outer_expression = "",
 			bool nested = false);
@@ -71,8 +76,9 @@ namespace Converter_RVC_Cpp {
 			Token_Container& token_producer,
 			bool println = false)
 		{
+			Config* c = c->getInstance();
 			std::string output{};
-			if (println) {
+			if (println && c->get_target_language() == Target_Language::cpp) {
 				output.append(" << ");
 			}
 			else {
@@ -80,6 +86,7 @@ namespace Converter_RVC_Cpp {
 			}
 			t = token_producer.get_next_Token();
 			bool something_to_print{ false };
+			bool to_string_added{ false };
 			while (t.str != ")") {
 				if (t.str == "(") {
 					output.append(convert_function_call_brakets(t, token_producer));
@@ -89,7 +96,11 @@ namespace Converter_RVC_Cpp {
 					output.append(tmp);
 					something_to_print = true;
 				}
-				else if (t.str == "+" && println) {
+				else if (t.str == "+" && println && c->get_target_language() == Target_Language::cpp) {
+					if (to_string_added) {
+						output.append(")");
+						to_string_added = false;
+					}
 					output.append(" << ");
 					t = token_producer.get_next_Token();
 				}
@@ -97,11 +108,13 @@ namespace Converter_RVC_Cpp {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					if (println) {
+					if (println && c->get_target_language() == Target_Language::cpp) {
 						// it is not a string, hence, we should add std::to_string for printing, just to be safe
-						output.append("std::to_string(");
+						if (!to_string_added) {
+							output.append("std::to_string(");
+							to_string_added = true;
+						}
 						output.append(t.str);
-						output.append(")");
 					}
 					else {
 						output.append(t.str);
@@ -110,7 +123,7 @@ namespace Converter_RVC_Cpp {
 					t = token_producer.get_next_Token();
 				}
 			}
-			if (!println) {
+			if (!(println && c->get_target_language() == Target_Language::cpp) || to_string_added) {
 				output.append(")");
 			}
 			t = token_producer.get_next_Token();
@@ -356,27 +369,140 @@ namespace Converter_RVC_Cpp {
 			t = token_producer.get_next_Token();
 			return return_value;
 		}
+
+		/* try to determine a type as narrow as possible, otherwise long might be a good choice */
+		std::string get_type_of_ranged_for(std::string range) {
+			size_t pos = 1; /* Skip initial { */
+
+			bool negative = false;
+			int res = 0;
+			char* e;
+
+			while (size_t next = range.find_first_of(",", pos) != range.npos) {
+				std::string val = range.substr(pos, next - pos);
+
+				long int x = strtol(val.c_str(), &e, 10);
+				pos = next + 1;
+				if (x < 0) {
+					negative = true;
+				}
+				if (x > SCHAR_MIN && x < SCHAR_MAX) { // 1
+					if (res < 1) {
+						res = 1;
+					}
+				}
+				else if (x > SHRT_MIN && x < SHRT_MAX) { // 2
+					if (res < 2) {
+						res = 2;
+					}
+				}
+				else if (x > INT_MIN && x < INT_MAX) { // 3
+					if (res < 3) {
+						res = 3;
+					}
+				}
+				else if (x > LONG_MIN && x < LONG_MAX) { // 4
+					if (res < 4) {
+						res = 4;
+					}
+				}
+				else {
+					return "long long int";
+				}
+			}
+
+			//cover also the last part
+			std::string val = range.substr(pos, range.size());
+
+			long int x = strtol(val.c_str(), &e, 10);
+			if (x < 0) {
+				negative = true;
+			}
+			if (x > SCHAR_MIN && x < SCHAR_MAX) { // 1
+				if (res < 1) {
+					res = 1;
+				}
+			}
+			else if (x > SHRT_MIN && x < SHRT_MAX) { // 2
+				if (res < 2) {
+					res = 2;
+				}
+			}
+			else if (x > INT_MIN && x < INT_MAX) { // 3
+				if (res < 3) {
+					res = 3;
+				}
+			}
+			else if (x > LONG_MIN && x < LONG_MAX) { // 4
+				if (res < 4) {
+					res = 4;
+				}
+			}
+			else {
+				return "long long int";
+			}
+
+			if (x == 1) {
+				if (negative) {
+					return "signed char";
+				}
+				else {
+					return "unsigned char";
+				}
+			}
+			else if (x == 2) {
+				if (negative) {
+					return "signed short";
+				}
+				else {
+					return "unsigned short";
+				}
+			}
+			else if (x == 3) {
+				if (negative) {
+					return "int";
+				}
+				else {
+					return "unsigned";
+				}
+			}
+			else if (x == 4) {
+				if (negative) {
+					return "signed long";
+				}
+				else {
+					return "unsigned long";
+				}
+			}
+			else {
+				return "long long int";
+			}
+		}
 	
 		std::pair <std::string, std::string> convert_for_head(
 			Token& t,
 			Token_Container& token_prod,
 			std::map<std::string, std::string>& local_map,
+			std::map<std::string, std::string>& symbol_type_map,
 			std::string prefix = "")
 		{
+			Config* c = c->getInstance();
 			std::string head{};
 			std::string tail{};
 			std::string adjusted_prefix{ prefix };
 			while ((t.str != "do") && (t.str != "}") && (t.str != ":")) { // } due to list comprehension 
 				if ((t.str == "for") || (t.str == "foreach")) {
-					head.append(adjusted_prefix + "for (");
 					t = token_prod.get_next_Token();
 					if ((t.str == "uint") || (t.str == "int") || (t.str == "String")
 						|| (t.str == "bool") || (t.str == "half") || (t.str == "float"))
 					{
-						head.append(convert_type(t, token_prod, local_map));
+						head.append(adjusted_prefix + "for (");
+						std::string type = convert_type(t, token_prod, local_map);
+						head.append(type);
 						head.append(" " + t.str + " = ");
 						std::string var_name{ t.str };
 						local_map[var_name] = "";
+						symbol_type_map[var_name] = type;
 						t = token_prod.get_next_Token(); //in
 						t = token_prod.get_next_Token(); //start value
 						while (t.str != "..") {
@@ -399,15 +525,29 @@ namespace Converter_RVC_Cpp {
 						head.append("; ++" + var_name + ") {\n");
 					}
 					else {//no type, directly variable name, indicates foreach loop
-						head.append("auto " + t.str);
-						local_map[t.str] = "";
+						std::string vv = t.str;
+						local_map[vv] = "";
 						t = token_prod.get_next_Token();//in
-						head.append(":");
 						t = token_prod.get_next_Token();
+						std::string r;
 						if ((t.str == "[") || (t.str == "{")) {
-							head.append(get_full_list(t, token_prod));
+							r.append(get_full_list(t, token_prod));
 						}
-						head.append("){\n");
+						if (c->get_target_language() == Target_Language::cpp) {
+							head.append(adjusted_prefix + "for (");
+							head.append("auto " + vv);
+							head.append(":");
+							head.append(r);
+							head.append("){\n");
+						}
+						else {
+							std::string range_type = get_type_of_ranged_for(r);
+							std::string unused_var{ find_unused_name(local_map, local_map) };
+							std::string unsed2{ find_unused_name(local_map, local_map) };
+							head.append(adjusted_prefix + range_type + " " + unsed2 + "[] = " + r + ";\n");
+							head.append(adjusted_prefix + "for(unsigned " + unused_var + " = 0;" + unused_var + " < sizeof(" + unsed2 + ") / sizeof(" + unsed2 + "[0]);++" + unused_var + ") { \n");
+							head.append(adjusted_prefix + range_type + " " + vv + " =" + unsed2 + "[" + unused_var + "];\n");
+						}
 					}
 					tail.insert(0, adjusted_prefix + "}\n");
 					if (t.str == ",") {
@@ -518,6 +658,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix,
 		std::string outer_expression)
 	{
@@ -562,7 +703,7 @@ namespace Converter_RVC_Cpp {
 		expression1.erase(expression1.size() - 2, 2);//remove last :
 		if (nested) {
 			expression1 =
-				convert_inline_if_with_list_assignment(expression1, global_map, local_map,
+				convert_inline_if_with_list_assignment(expression1, global_map, local_map, symbol_type_map,
 														prefix + "\t", outer_expression);
 		}
 		else {
@@ -570,7 +711,7 @@ namespace Converter_RVC_Cpp {
 			if ((expression1[0] == '[') || (expression1[0] == '{')) {
 				expression1 =
 					convert_list_comprehension(expression1, outer_expression, global_map,
-												local_map, prefix + "\t");
+												local_map, symbol_type_map, prefix + "\t");
 			}
 			else {
 				expression1 = prefix + "\t" + outer_expression + " = " + expression1 + ";\n";
@@ -607,7 +748,7 @@ namespace Converter_RVC_Cpp {
 		}
 		if (nested) {
 			expression2 =
-				convert_inline_if_with_list_assignment(expression2, global_map, local_map,
+				convert_inline_if_with_list_assignment(expression2, global_map, local_map, symbol_type_map,
 														prefix + "\t", outer_expression);
 		}
 		else {
@@ -615,7 +756,7 @@ namespace Converter_RVC_Cpp {
 			if ((expression2[0] == '[') || (expression2[0] == '{')) {
 				expression2 =
 					convert_list_comprehension(expression2, outer_expression, global_map,
-												local_map, prefix + "\t");
+												local_map, symbol_type_map, prefix + "\t");
 			}
 			else {
 				expression2 = prefix + "\t" + outer_expression + " = " + expression2+";\n";
@@ -636,70 +777,70 @@ namespace Converter_RVC_Cpp {
 		std::string string_to_convert,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix,
 		std::string outer_expression)
 	{
 		Tokenizer tok{ string_to_convert };
 		Token t = tok.get_next_Token();
-		return convert_inline_if_with_list_assignment(t, tok, global_map, local_map, prefix, outer_expression);
+		return convert_inline_if_with_list_assignment(t, tok, global_map, local_map, symbol_type_map, prefix, outer_expression);
 	}
 
-
-		std::pair<std::string,bool> convert_inline_if(
-			Token& t,
-			Token_Container& token_producer)
-		{
-			std::string output{};
-			std::string previous_token_string;
-			bool convert_to_if{ false };
-			bool condition_done{ false };
-			if (t.str == "if") {
-				t = token_producer.get_next_Token();
-				while ((t.str != "end") && (t.str != "endif")) {
-					if (t.str == "then") {
-						condition_done = true;
-						output.append("?");
-						t = token_producer.get_next_Token();
-						previous_token_string = "?";
+	std::pair<std::string,bool> convert_inline_if(
+		Token& t,
+		Token_Container& token_producer)
+	{
+		std::string output{};
+		std::string previous_token_string;
+		bool convert_to_if{ false };
+		bool condition_done{ false };
+		if (t.str == "if") {
+			t = token_producer.get_next_Token();
+			while ((t.str != "end") && (t.str != "endif")) {
+				if (t.str == "then") {
+					condition_done = true;
+					output.append("?");
+					t = token_producer.get_next_Token();
+					previous_token_string = "?";
+				}
+				else if (t.str == "else") {
+					output.append(":");
+					t = token_producer.get_next_Token();
+					previous_token_string = ":";
+				}
+				else if (t.str == "if") {
+					auto tmp = convert_inline_if(t, token_producer);
+					output.append(tmp.first);
+					if (tmp.second) {
+						convert_to_if = true;
 					}
-					else if (t.str == "else") {
-						output.append(":");
-						t = token_producer.get_next_Token();
-						previous_token_string = ":";
-					}
-					else if (t.str == "if") {
-						auto tmp = convert_inline_if(t, token_producer);
-						output.append(tmp.first);
-						if (tmp.second) {
+				}
+				else if (t.str == "") {
+					throw Wrong_Token_Exception{ "Unexpected End of File." };
+				}
+				else {
+					if ((t.str == "[") || (t.str == "{")) {
+						// ? oder : davor bedeuten, dass es kein array sein kann und
+						// somit ist das eine listenzuweisung, was in C++ nicht funktioniert!
+						if ((previous_token_string == "?") || (previous_token_string == ":")) {
 							convert_to_if = true;
 						}
 					}
-					else if (t.str == "") {
-						throw Wrong_Token_Exception{ "Unexpected End of File." };
+
+					if (t.str == "=") {
+						output.append(" == ");
 					}
 					else {
-						if ((t.str == "[") || (t.str == "{")) {
-							// ? oder : davor bedeuten, dass es kein array sein kann und
-							// somit ist das eine listenzuweisung, was in C++ nicht funktioniert!
-							if ((previous_token_string == "?") || (previous_token_string == ":")) {
-								convert_to_if = true;
-							}
-						}
-
-						if (t.str == "=") {
-							output.append(" == ");
-						}
-						else {
-							output.append(" " + t.str);
-						}
-						previous_token_string = t.str;
-						t = token_producer.get_next_Token();
+						output.append(" " + t.str);
 					}
+					previous_token_string = t.str;
+					t = token_producer.get_next_Token();
 				}
-				t = token_producer.get_next_Token();
 			}
-			return std::make_pair(output,convert_to_if);
+			t = token_producer.get_next_Token();
 		}
+		return std::make_pair(output,convert_to_if);
+	}
 
 	namespace {
 		std::string read_brace(
@@ -732,18 +873,18 @@ namespace Converter_RVC_Cpp {
 			return output;
 		}
 
-
-
 		std::string convert_list_comprehension(
 			Token& t,
 			Token_Container& token_producer,
 			std::string list_name,
 			std::map<std::string, std::string>& global_map,
 			std::map<std::string, std::string>& local_map,
+			std::map<std::string, std::string>& symbol_type_map,
 			std::string prefix = "",
 			std::string outer_expression = "",
 			bool nested = false)
 		{
+			Config* c = c->getInstance();
 			//find whitespaces and remove them, because it doesn't look nice
 			while (list_name.find(" ") != std::string::npos) {
 				list_name = list_name.erase(list_name.find(" "), 1);
@@ -766,7 +907,8 @@ namespace Converter_RVC_Cpp {
 						expr = list_name + "[" + index_name + "]";
 					}
 					command.append(convert_list_comprehension(token_tok, tok, list_name,
-																global_map, local_map, prefix+"\t",
+																global_map, local_map, symbol_type_map,
+																prefix+"\t",
 																expr, true));
 					had_inner_list_comprehension = true;
 					//t = token_producer.get_next_Token(); // skip closing }
@@ -799,7 +941,8 @@ namespace Converter_RVC_Cpp {
 								}
 								command =
 									convert_inline_if_with_list_assignment(buf.first, global_map,
-																			local_map, prefix + "\t",
+																			local_map, symbol_type_map,
+																			prefix + "\t",
 																			tmp_str);
 								tmp_command = "";
 							}
@@ -818,7 +961,7 @@ namespace Converter_RVC_Cpp {
 					if (t.str == ":") {
 						t = token_producer.get_next_Token();
 						std::pair<std::string, std::string> head_tail =
-								convert_for_head(t, token_producer, local_map, prefix);
+								convert_for_head(t, token_producer, local_map, symbol_type_map, prefix);
 						output.append(head_tail.first);
 						//insert the corresponding number of \t before the command, to get the spacing right
 						std::string tabs;
@@ -843,13 +986,27 @@ namespace Converter_RVC_Cpp {
 						output.append(head_tail.second);
 					}
 					else if (t.str == "}") {
-						tmp_command.insert(0, "{");
-						tmp_command.append("}");
-						std::string unused_var{ find_unused_name(global_map,local_map) };
-						output.append(prefix + "for( auto " + unused_var + ":" + tmp_command + ") {\n");
-						output.append(command+ " = " + unused_var + ";\n");
-						output.append(prefix + "\t++" + index_name + ";\n");
-						output.append(prefix + "}\n");
+						if (c->get_target_language() == Target_Language::cpp) {
+							tmp_command.insert(0, "{");
+							tmp_command.append("}");
+							std::string unused_var{ find_unused_name(global_map, local_map) };
+							output.append(prefix + "for( auto " + unused_var + ":" + tmp_command + ") {\n");
+							output.append(command + " = " + unused_var + ";\n");
+							output.append(prefix + "\t++" + index_name + ";\n");
+							output.append(prefix + "}\n");
+						}
+						else {
+							tmp_command.insert(0, "{");
+							tmp_command.append("}");
+							std::string range_type = get_type_of_ranged_for(tmp_command);
+							std::string unused_var{ find_unused_name(global_map, local_map) };
+							std::string unsed2{ find_unused_name(global_map, local_map) };
+							output.append(prefix + range_type + " " + unsed2 + "[] = " + tmp_command + ";\n");
+							output.append(prefix + "for(unsigned " + unused_var + " = 0;" + unused_var + " < sizeof("+ unsed2 +") / sizeof(" + unsed2 + "[0]);++" + unused_var + ") { \n");
+							output.append(command + " ="+ unsed2 + "[" + unused_var + "];\n");
+							output.append(prefix + "\t++" + index_name + ";\n");
+							output.append(prefix + "}\n");
+						}
 					}
 				}
 				if (t.str == ",") {
@@ -868,6 +1025,7 @@ namespace Converter_RVC_Cpp {
 			std::string list_name,
 			std::map<std::string, std::string>& global_map,
 			std::map<std::string, std::string>& local_map,
+			std::map<std::string, std::string>& symbol_type_map,
 			std::string prefix,
 			std::string outer_expression,
 			bool nested)
@@ -877,7 +1035,8 @@ namespace Converter_RVC_Cpp {
 			Tokenizer token_producer{ string_to_convert };
 			Token t = token_producer.get_next_Token();//this must be the start of the list; { - can be dropped
 			return prefix + "{\n" + convert_list_comprehension(t, token_producer, list_name,
-																global_map, local_map, prefix + "\t")
+																global_map, local_map, symbol_type_map,
+																prefix + "\t")
 				+ prefix + "}\n";
 		}
 
@@ -973,44 +1132,47 @@ namespace Converter_RVC_Cpp {
 	std::string convert_function(
 		Token& t, Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix,
 		std::string symbol)
 	{
 		std::map<std::string, std::string> local_map{};
+		Config* c = c->getInstance();
 		if (t.str == "function") {
-			std::string output{ prefix + "auto " };
+			std::string output{ prefix };
 			t = token_producer.get_next_Token();//name
 			std::string symbol_name{ t.str };
-			output.append(t.str);
 			global_map[t.str] = "function";
 			t = token_producer.get_next_Token();//(
-			output.append("(");
+			std::string params;
+			params.append("(");
 			t = token_producer.get_next_Token();
 			while (t.str != ")") {
 				if ((t.str == "uint") || (t.str == "int") || (t.str == "String")
 					|| (t.str == "bool") || (t.str == "half") || (t.str == "float"))
 				{
-					output.append(convert_type(t, token_producer, global_map, local_map) + " ");
-					output.append(t.str); // must be the parameter name
+					params.append(convert_type(t, token_producer, global_map, local_map) + " ");
+					params.append(t.str); // must be the parameter name
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					output.append(t.str);
+					params.append(t.str);
 				}
 				t = token_producer.get_next_Token();
 			}
-			output.append(")");
+			params.append(")");
 			t = token_producer.get_next_Token();
-			if (t.str == "-->") {
-				output.append(" -> ");
-			}
-			else {//TODO check this! Is this required?
+			if (t.str != "-->") {
 				std::cerr << "Error parsing function";
 			}
 			t = token_producer.get_next_Token();//must be the return type
-			output.append(convert_type(t, token_producer, global_map, local_map) + " {\n");
+			if (c->get_target_language() == Target_Language::c) {
+				output.append("static ");
+			}
+			output.append(convert_type(t, token_producer, global_map, local_map) + " " + symbol_name + params + "{\n");
+			// HEAD END
 			t = token_producer.get_next_Token();
 			while ((t.str != "end") && (t.str != "endfunction")) {
 				if ((t.str == "var") || (t.str == "begin") || (t.str == "do")
@@ -1019,22 +1181,22 @@ namespace Converter_RVC_Cpp {
 					t = token_producer.get_next_Token();
 				}
 				else if (t.str == "if") {
-					output.append(convert_if(t, token_producer, global_map, local_map, true, prefix + "\t"));
+					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, true, prefix + "\t"));
 				}
 				else if ((t.str == "for") || (t.str == "foreach")) {
-					output.append(convert_for(t, token_producer, global_map, local_map, true, prefix + "\t"));
+					output.append(convert_for(t, token_producer, global_map, local_map, symbol_type_map, true, prefix + "\t"));
 				}
 				else if (t.str == "while") {
-					output.append(convert_while(t, token_producer, global_map, local_map, true, prefix + "\t"));
+					output.append(convert_while(t, token_producer, global_map, local_map, symbol_type_map, true, prefix + "\t"));
 				}
 				else if ((t.str == "list") || (t.str == "List")) {
-					output.append(convert_list(t, token_producer, global_map, local_map, "*", prefix + "\t"));
+					output.append(convert_list(t, token_producer, global_map, local_map, symbol_type_map, "*", prefix + "\t"));
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					output.append(convert_expression(t, token_producer, global_map, local_map, "*", true, prefix + "\t"));
+					output.append(convert_expression(t, token_producer, global_map, local_map, symbol_type_map, "*", true, prefix + "\t"));
 				}
 			}
 			output.append(prefix + "}\n");
@@ -1053,12 +1215,18 @@ namespace Converter_RVC_Cpp {
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix,
 		std::string symbol)
 	{
 		std::map<std::string, std::string> local_map{};
+		Config* c = c->getInstance();
 		if (t.str == "procedure") {
-			std::string output{ prefix + "void " };
+			std::string output{ prefix };
+			if (c->get_target_language() == Target_Language::c) {
+				output.append("static ");
+			}
+			output.append("void ");
 			t = token_producer.get_next_Token();//name
 			output.append(t.str);
 			std::string symbol_name{ t.str };
@@ -1089,22 +1257,22 @@ namespace Converter_RVC_Cpp {
 					t = token_producer.get_next_Token();
 				}
 				else if (t.str == "if") {
-					output.append(convert_if(t, token_producer, global_map, local_map, false, prefix + "\t"));
+					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, false, prefix + "\t"));
 				}
 				else if ((t.str == "for") || (t.str == "foreach")) {
-					output.append(convert_for(t, token_producer, global_map, local_map, false, prefix + "\t"));
+					output.append(convert_for(t, token_producer, global_map, local_map, symbol_type_map, false, prefix + "\t"));
 				}
 				else if (t.str == "while") {
-					output.append(convert_while(t, token_producer, global_map, local_map, false, prefix + "\t"));
+					output.append(convert_while(t, token_producer, global_map, local_map, symbol_type_map, false, prefix + "\t"));
 				}
 				else if ((t.str == "list") || (t.str == "List")) {
-					output.append(convert_list(t, token_producer, global_map, local_map, "*", prefix + "\t"));
+					output.append(convert_list(t, token_producer, global_map, local_map, symbol_type_map, "*", prefix + "\t"));
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else { 
-					output.append(convert_expression(t, token_producer, global_map, local_map, "*", false, prefix + "\t")); 
+					output.append(convert_expression(t, token_producer, global_map, local_map, symbol_type_map, "*", false, prefix + "\t")); 
 				}
 			}
 			output.append(prefix + "}\n");
@@ -1124,6 +1292,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		bool return_statement,
 		std::string prefix,
 		bool nested)
@@ -1156,26 +1325,26 @@ namespace Converter_RVC_Cpp {
 					t = token_producer.get_next_Token();
 					if (t.str == "if") {
 						output.append(prefix + "} else ");
-						output.append(convert_if(t, token_producer, global_map, local_map, return_statement, prefix, true));
+						output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix, true));
 					}
 					else {
 						output.append(prefix + "} else {\n");
 					}
 				}
 				else if (t.str == "if") {
-					output.append(convert_if(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if ((t.str == "for") || (t.str == "foreach")) {
-					output.append(convert_for(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_for(t, token_producer, global_map, local_map, symbol_type_map,  return_statement, prefix + "\t"));
 				}
 				else if (t.str == "while") {
-					output.append(convert_while(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_while(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					output.append(convert_expression(t, token_producer, global_map, local_map, "*", return_statement, prefix + "\t"));
+					output.append(convert_expression(t, token_producer, global_map, local_map, symbol_type_map, "*", return_statement, prefix + "\t"));
 				}
 			}
 			if (!nested) {
@@ -1192,29 +1361,30 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		bool return_statement,
 		std::string prefix)
 	{
 		std::string output{};
 		if ((t.str == "for") || (t.str == "foreach")) {
-			std::pair<std::string, std::string> head_tail = convert_for_head(t, token_producer, local_map);//t should contain do after this function
+			std::pair<std::string, std::string> head_tail = convert_for_head(t, token_producer, local_map, symbol_type_map);//t should contain do after this function
 			output.append(prefix + head_tail.first);
 			t = token_producer.get_next_Token();
 			while ((t.str != "end") && (t.str != "endfor") && (t.str != "endforeach")) {
 				if (t.str == "if") {
-					output.append(convert_if(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if ((t.str == "for") || (t.str == "foreach")) {
-					output.append(convert_for(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_for(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if (t.str == "while") {
-					output.append(convert_while(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_while(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					output.append(convert_expression(t, token_producer, global_map, local_map, "*", return_statement, prefix + "\t"));
+					output.append(convert_expression(t, token_producer, global_map, local_map, symbol_type_map, "*", return_statement, prefix + "\t"));
 				}
 			}
 			output.append(prefix + head_tail.second);
@@ -1228,6 +1398,7 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		bool return_statement,
 		std::string prefix)
 	{
@@ -1251,19 +1422,19 @@ namespace Converter_RVC_Cpp {
 			t = token_producer.get_next_Token();
 			while ((t.str != "end") && (t.str != "endwhile")) {
 				if (t.str == "if") {
-					output.append(convert_if(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if ((t.str == "for") || (t.str == "foreach")) {
-					output.append(convert_for(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_for(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if (t.str == "while") {
-					output.append(convert_while(t, token_producer, global_map, local_map, return_statement, prefix + "\t"));
+					output.append(convert_while(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
 				}
 				else {
-					output.append(convert_expression(t, token_producer, global_map, local_map, "*", return_statement, prefix + "\t"));
+					output.append(convert_expression(t, token_producer, global_map, local_map, symbol_type_map, "*", return_statement, prefix + "\t"));
 				}
 			}
 			output.append(prefix + "}\n");
@@ -1310,14 +1481,26 @@ namespace Converter_RVC_Cpp {
 
 	}
 
+	std::string convert_expression(
+		Token& t,
+		Token_Container& token_producer,
+		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string prefix)
+	{
+		std::string dummy;
+		return convert_expression(t, token_producer, global_map, global_map, symbol_type_map, dummy, "*", false, prefix);
+	}
 
 	std::string convert_expression(
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string& symbol_name,
 		std::string prefix)
 	{
-		return convert_expression(t, token_producer, global_map, global_map, "*", false, prefix);
+		return convert_expression(t, token_producer, global_map, global_map, symbol_type_map, symbol_name, "*", false, prefix);
 	}
 
 	std::string convert_expression(
@@ -1325,34 +1508,66 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string symbol,
+		bool return_statement,
+		std::string prefix)
+	{
+		std::string dummy;
+		return convert_expression(t, token_producer, global_map, local_map, symbol_type_map, dummy, symbol, return_statement, prefix);
+	}
+
+	std::string convert_expression(
+		Token& t,
+		Token_Container& token_producer,
+		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
+		std::string& symbol_name,
 		std::string symbol,
 		bool return_statement,
 		std::string prefix)
 	{
 		std::string output{};
 		bool type_specified{ false };
+		std::string type;
 		bool println{ false };
 		bool print{ false };
 		if ((t.str == "uint") || (t.str == "int") || (t.str == "String") || (t.str == "bool")
 			|| (t.str == "half") || (t.str == "float"))
 		{
-			output.append(convert_type(t, token_producer, global_map, local_map) + " ");
+			type = convert_type(t, token_producer, global_map, local_map);
+			output.append(type + " ");
 			type_specified = true;
 		}
 		else if (t.str == "List") {
-			return convert_list(t, token_producer, global_map, local_map, "*", prefix);//parsing for specific symbol isn't startet here, if specific list has to be found the function is started directly via the entry function of this flow
+			return convert_list(t, token_producer, global_map, local_map, symbol_type_map, "*", prefix);//parsing for specific symbol isn't startet here, if specific list has to be found the function is started directly via the entry function of this flow
 		}
 		else if (return_statement) {
 			output.append("return ");
 		}
-		std::string symbol_name{ t.str };
-		local_map[symbol_name] = ""; //insert to check for name collisions
+		symbol_name = t.str;
+		Config* c = c->getInstance();
+		if (type_specified) {
+			local_map[symbol_name] = ""; //insert to check for name collisions
+			symbol_type_map[symbol_name] = type;
+		}
 		if (t.str == "println") {
-			output.append("std::cout ");
+			if (c->get_target_language() == Target_Language::cpp) {
+				output.append("std::cout ");
+			}
+			else {
+				output.append("printf");
+			}
 			println = true;
 		}
 		else if (t.str == "print") {
-			output.append("std::cout ");
+			if (c->get_target_language() == Target_Language::cpp) {
+				output.append("std::cout ");
+			}
+			else {
+				output.append("printf");
+			}
 			print = true;
 		}
 		else {
@@ -1380,11 +1595,11 @@ namespace Converter_RVC_Cpp {
 						while (output.find("\t") != std::string::npos) {
 							output.erase(output.find("\t"), 1);
 						}
-						output = convert_list_comprehension(ret_val.first, output, global_map, local_map, prefix);
+						output = convert_list_comprehension(ret_val.first, output, global_map, local_map, symbol_type_map, prefix);
 					}
 					else {
 						output.append(";\n");
-						output.append(convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, prefix));
+						output.append(convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, symbol_type_map, prefix));
 					}
 				}
 				else {
@@ -1392,7 +1607,7 @@ namespace Converter_RVC_Cpp {
 						output.append(ret_val.first + ";\n");
 					}
 					else {
-						output = convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, prefix);
+						output = convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, symbol_type_map, prefix);
 					}
 				}
 				t = token_producer.get_next_Token();
@@ -1409,7 +1624,7 @@ namespace Converter_RVC_Cpp {
 						output = "";
 					}
 					//convert the expression to an if statement
-					output.append(convert_inline_if_with_list_assignment(tmp.first, global_map, local_map, prefix, symbol_name));
+					output.append(convert_inline_if_with_list_assignment(tmp.first, global_map, local_map, symbol_type_map, prefix, symbol_name));
 				}
 				else {
 					output.append(tmp.first);
@@ -1463,7 +1678,14 @@ namespace Converter_RVC_Cpp {
 			}
 		}
 		else if (t.str == "=") {
-			if (type_specified)output.insert(0, prefix + "const ");
+			if (type_specified) {
+				if (c->get_target_language() == Target_Language::c) {
+					output.insert(0, prefix + "static const ");
+				}
+				else {
+					output.insert(0, prefix + "const ");
+				}
+			}
 			output.append(" = ");
 			t = token_producer.get_next_Token();
 			if (t.str == "\"") {
@@ -1481,11 +1703,11 @@ namespace Converter_RVC_Cpp {
 						while (output.find("\t") != std::string::npos) {
 							output.erase(output.find("\t"), 1);
 						}
-						output = convert_list_comprehension(ret_val.first, output, global_map, local_map, prefix);
+						output = convert_list_comprehension(ret_val.first, output, global_map, local_map, symbol_type_map, prefix);
 					}
 					else {
 						output.append(";\n");
-						output.append(convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, prefix));
+						output.append(convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, symbol_type_map, prefix));
 					}
 				}
 				else {
@@ -1494,7 +1716,7 @@ namespace Converter_RVC_Cpp {
 					}
 					else {
 						output =
-							convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, prefix);
+							convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, symbol_type_map, prefix);
 					}
 				}
 				t = token_producer.get_next_Token();
@@ -1512,7 +1734,7 @@ namespace Converter_RVC_Cpp {
 						output = "";
 					}
 					//convert the expression to an if statement
-					output.append(convert_inline_if_with_list_assignment(tmp.first, global_map, local_map, prefix, symbol_name));
+					output.append(convert_inline_if_with_list_assignment(tmp.first, global_map, local_map, symbol_type_map, prefix, symbol_name));
 				}
 				else {
 					output.append(tmp.first);
@@ -1575,7 +1797,12 @@ namespace Converter_RVC_Cpp {
 				if (t.str == "(") {
 					output.append(convert_function_call_brakets(t, token_producer,println||print));
 					if (println) {
-						output.append(" << \"\\n\"");
+						if (c->get_target_language() == Target_Language::cpp) {
+							output.append(" << \"\\n\"");
+						}
+						else {
+							output.append(prefix + "printf(\"\\n\");\n");
+						}
 					}
 				}
 				else if (t.str == "") {
@@ -1606,9 +1833,10 @@ namespace Converter_RVC_Cpp {
 		Token& t,
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix)
 	{
-		return convert_list(t, token_producer, global_map, global_map, "*", prefix);
+		return convert_list(t, token_producer, global_map, global_map, symbol_type_map, "*", prefix);
 	}
 
 	std::string convert_list(
@@ -1616,15 +1844,18 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string symbol,
 		std::string prefix)
 	{
 		std::string type{};
+		Config* c = c->getInstance();
 		std::string s{ convert_sub_list(t, token_producer, global_map, local_map, symbol, type) };
 		//t should now contain the name of the list
 		s.insert(s.find_first_of("["), t.str);
 		std::string name{ t.str };
 		local_map[name] = ""; // insert to check for name collisions
+		symbol_type_map[name] = type;
 		t = token_producer.get_next_Token();
 		if (t.str == ":=") {
 			s.insert(0, prefix);
@@ -1636,7 +1867,7 @@ namespace Converter_RVC_Cpp {
 				//remove = sign
 				s.erase(s.find_last_of("=")-1);
 				s.append(";");
-				s.append(convert_list_comprehension(ret_val.first, name, global_map, local_map, prefix));
+				s.append(convert_list_comprehension(ret_val.first, name, global_map, local_map, symbol_type_map, prefix));
 			}
 			else {
 				s.append(ret_val.first + ";\n");
@@ -1644,7 +1875,12 @@ namespace Converter_RVC_Cpp {
 			t = token_producer.get_next_Token();
 		}
 		else if (t.str == "=") {
-			s.insert(0, prefix + "const ");
+			if (c->get_target_language() == Target_Language::c) {
+				s.insert(0, prefix + "static const ");
+			}
+			else {
+				s.insert(0, prefix + "const ");
+			}
 			s.append(" = ");
 			t = token_producer.get_next_Token();
 			std::pair<std::string, bool> ret_val =
@@ -1654,7 +1890,7 @@ namespace Converter_RVC_Cpp {
 				s.erase(s.find("const "), 6);//remove const
 				s.erase(s.find_last_of("=")-1);
 				s.append(";");
-				s.append(convert_list_comprehension(ret_val.first, name, global_map, local_map, prefix));
+				s.append(convert_list_comprehension(ret_val.first, name, global_map, local_map, symbol_type_map, prefix));
 			}
 			else {
 				s.append(ret_val.first + ";\n");
@@ -1798,6 +2034,7 @@ namespace Converter_RVC_Cpp {
 		std::string declaration;
 		bool add{ false };
 		bool function{ false };
+		Config* c = c->getInstance();
 
 		if (t.str == "@native") {
 			t = token_producer.get_next_Token();
@@ -1848,10 +2085,20 @@ namespace Converter_RVC_Cpp {
 				t = token_producer.get_next_Token();
 				// must be the type
 				std::string return_type = convert_type(t, token_producer, global_map, global_map);
-				declaration = "extern \"C\" " + return_type + " " + declaration;
+				if (c->get_target_language() == Target_Language::c) {
+					declaration = "extern " + return_type + " " + declaration;
+				}
+				else {
+					declaration = "extern \"C\" " + return_type + " " + declaration;
+				}
 			}
 			else {
-				declaration = "extern \"C\" void " + declaration;
+				if (c->get_target_language() == Target_Language::c) {
+					declaration = "extern void " + declaration;
+				}
+				else {
+					declaration = "extern \"C\" void " + declaration;
+				}
 			}
 			if (function) {
 				if ((t.str != "end") && (t.str != "endfunction")) {
@@ -1893,29 +2140,31 @@ namespace Converter_RVC_Cpp {
 		Token_Container& token_producer,
 		std::map<std::string, std::string>& global_map,
 		std::map<std::string, std::string>& local_map,
+		std::map<std::string, std::string>& symbol_type_map,
 		std::string prefix = "")
 	{
 		std::string output{ prefix + "{\n" };
 		std::map<std::string, std::string> scope_local_map{ local_map };
+		std::map<std::string, std::string> scope_local_type_map{ symbol_type_map };
 		t = token_producer.get_next_Token(); //skip begin
 		while (t.str != "end") {
 			if ((t.str == "var") || (t.str == "do")) {
 				t = token_producer.get_next_Token();
 			}
 			else if (t.str == "begin") {
-				output.append(convert_scope(t, token_producer, global_map, scope_local_map, prefix + "\t"));
+				output.append(convert_scope(t, token_producer, global_map, scope_local_map, scope_local_type_map, prefix + "\t"));
 			}
 			else if ((t.str == "for") || (t.str == "foreach")) {
-				output.append(convert_for(t, token_producer, global_map, scope_local_map, false, prefix + "\t"));
+				output.append(convert_for(t, token_producer, global_map, scope_local_map, scope_local_type_map, false, prefix + "\t"));
 			}
 			else if (t.str == "while") {
-				output.append(convert_while(t, token_producer, global_map, scope_local_map, false, prefix + "\t"));
+				output.append(convert_while(t, token_producer, global_map, scope_local_map, scope_local_type_map, false, prefix + "\t"));
 			}
 			else if (t.str == "") {
 				throw Wrong_Token_Exception{ "Unexpected End of File." };
 			}
 			else {
-				output.append(convert_expression(t, token_producer, global_map, scope_local_map, "*", false, prefix + "\t"));
+				output.append(convert_expression(t, token_producer, global_map, scope_local_map, scope_local_type_map, "*", false, prefix + "\t"));
 			}
 		}
 		output.append(prefix + "}\n");

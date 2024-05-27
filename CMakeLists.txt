@@ -32,6 +32,7 @@ add_subdirectory(IR)
 add_subdirectory(Conversion)
 add_subdirectory(Config)
 add_subdirectory(common)
+add_subdirectory(Scheduling_Lib)
 add_subdirectory(Code_Generation)
 
 target_include_directories(Dataflow_Code_Generator PUBLIC ${CMAKE_CURRENT_LIST_DIR})
