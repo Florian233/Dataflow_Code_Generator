@@ -475,7 +475,7 @@ Code_Generation_C_Cpp::generate_actor_code(
 	std::filesystem::path path_header{ c->get_target_dir() };
 	path_header /= header_name;
 	std::ofstream output_file_header{ path_header };
-	if (output_file_header.bad()) {
+	if (output_file_header.fail()) {
 		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path_header.string() };
 	}
 	output_file_header << header_code;
@@ -485,7 +485,7 @@ Code_Generation_C_Cpp::generate_actor_code(
 		std::filesystem::path path_source{ c->get_target_dir() };
 		path_source /= source_name;
 		std::ofstream output_file_source{ path_source };
-		if (output_file_source.bad()) {
+		if (output_file_source.fail()) {
 			throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path_header.string() };
 		}
 		output_file_source << source_code;

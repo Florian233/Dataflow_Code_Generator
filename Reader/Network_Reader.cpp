@@ -295,7 +295,7 @@ static void start_parsing(
 	bool top)
 {
 	std::ifstream network_file(start, std::ifstream::in);
-	if (network_file.bad()) {
+	if (network_file.fail()) {
 		throw Network_Reader::Network_Reader_Exception{ "Cannot open the file " + start };
 	}
 	std::stringstream Top_network_buffer;

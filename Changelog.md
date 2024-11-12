@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1
+
+### Added
+ * No additions, only minor version for bug fixes
+ 
+### Changed
+ * Properly check if file open operation failed, and stop operation in this case without reading from a file that wasn't opened properly
+ * Check for multi-reader/writer ports/channels and stop operation if present
+
 ## 1.3
 
 ### Added

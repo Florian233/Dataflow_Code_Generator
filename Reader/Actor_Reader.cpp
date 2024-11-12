@@ -11,6 +11,9 @@ static std::map<std::string, IR::Actor_Instance*> instance_map{};
 // Map the name of an actor to it's actor object to speed up linking between instances and actors
 static std::map<std::string, IR::Actor*> actor_map{};
 
+static std::set<std::string> found_instance_dstport;
+static std::set<std::string> found_instance_srcport;
+
 /* Create objects for all actors (not instances!) and add them to the Dataflow_Network object. */
 static void create_actor_objects(IR::Dataflow_Network* dpn) {
 	for (auto it = dpn->get_actors_class_path_map().begin();
@@ -63,6 +66,31 @@ void Network_Reader::read_actors(IR::Dataflow_Network* dpn){
 		std::string src_id = it->get_src_id();
 		std::string dst_id = it->get_dst_id();
 
+		std::string src_str = src_id + "$" + it->get_src_port();
+		std::string dst_str = dst_id + "$" + it->get_dst_port();
+
+		if (found_instance_srcport.find(src_str) != found_instance_srcport.end()) {
+			/* This port of this instance is already connected, this is not allowed by
+			 * this model. We assume point-to-point connections and not multi-reader ports.
+			 * This can be supported by adding further connections and ports automatically.
+			 */
+			throw Network_Reader_Exception("Multi-Reader Ports are not supported currently: " + src_id + "." + it->get_src_port());
+		}
+		else {
+			found_instance_srcport.insert(src_str);
+		}
+
+		if (found_instance_dstport.find(dst_str) != found_instance_dstport.end()) {
+			/* This port of this instance is already connected, this is not allowed by
+			 * this mode. We assume point-to-point connections and not multi-writer connections.
+			 * This is a source of non-determinism and cannot be supported easily.
+			 */
+			throw Network_Reader_Exception{ "Multi-Writer Ports are not supported: " + dst_id + "." + it->get_dst_port() };
+		}
+		else {
+			found_instance_dstport.insert(dst_str);
+		}
+
 		std::string src_class = dpn->get_id_class_map()[src_id];
 		std::string dst_class = dpn->get_id_class_map()[dst_id];
 
@@ -99,7 +127,7 @@ void Network_Reader::read_actors(IR::Dataflow_Network* dpn){
 /* Read the source code of an actor. */
 void IR::Actor::read_actor(void) {
 	std::ifstream file(path, std::ifstream::in);
-	if (file.bad()) {
+	if (file.fail()) {
 		throw Network_Reader::Network_Reader_Exception{ "Cannot open the file " + path };
 	}
 	std::stringstream buffer;
