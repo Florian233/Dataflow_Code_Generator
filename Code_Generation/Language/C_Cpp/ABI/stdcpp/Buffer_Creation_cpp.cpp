@@ -241,7 +241,7 @@ ABI_stdcpp::generate_channel_code(bool cntrl_chan)
     path /= "Channel.hpp";
 
 	std::ofstream output_file{ path };
-	if (output_file.bad()) {
+	if (output_file.fail()) {
 		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path.string() };
 	}
 	output_file << data_channel;

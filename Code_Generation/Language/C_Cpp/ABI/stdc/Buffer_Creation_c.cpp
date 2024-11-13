@@ -491,7 +491,7 @@ ABI_stdc::generate_channel_code(bool cntrl_chan)
     path /= "channel.h";
 
 	std::ofstream output_file{ path };
-	if (output_file.bad()) {
+	if (output_file.fail()) {
 		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path.string() };
 	}
 	output_file << c_buffer_impl;

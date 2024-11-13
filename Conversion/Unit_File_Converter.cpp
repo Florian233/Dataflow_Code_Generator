@@ -86,7 +86,7 @@ public:
 		actor_conversion_data{data}
 	{
 		std::ifstream file(_path, std::ifstream::in);
-		if (file.bad()) {
+		if (file.fail()) {
 			throw Network_Reader::Network_Reader_Exception{ "Cannot open the file " + _path.string()};
 		}
 		std::stringstream buffer;

@@ -23,7 +23,7 @@ void Mapping::read_mapping(
 
 	{
 		std::ifstream network_file(path, std::ifstream::in);
-		if (network_file.bad()) {
+		if (network_file.fail()) {
 			throw Converter_Exception{ "Cannot open the file " + path };
 		}
 		std::stringstream Top_network_buffer;

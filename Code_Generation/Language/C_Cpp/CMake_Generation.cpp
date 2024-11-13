@@ -34,7 +34,7 @@ void generate_cmake_file(
 	cmake_path /= "CMakeLists.txt";
 
 	std::ofstream output_file{ cmake_path };
-	if (output_file.bad()) {
+	if (output_file.fail()) {
 		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + cmake_path.string()};
 	}
 	output_file << code1;

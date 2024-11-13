@@ -203,7 +203,7 @@ std::pair<std::string, std::string> generate_ORCC_compatibility_layer(std::strin
 		std::filesystem::path tmp{ path };
 		tmp /= "options.h";
 		std::ofstream output_file{ tmp };
-		if (output_file.bad()) {
+		if (output_file.fail()) {
 			throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + tmp.string()};
 		}
 		output_file << header;
@@ -220,7 +220,7 @@ std::pair<std::string, std::string> generate_ORCC_compatibility_layer(std::strin
 	tmp /= filename;
 
 	std::ofstream source_file{ tmp };
-	if (source_file.bad()) {
+	if (source_file.fail()) {
 		throw Code_Generation::Code_Generation_Exception{ "Cannot open file " + tmp.string()};
 	}
 	if (c->get_target_language() == Target_Language::cpp) {

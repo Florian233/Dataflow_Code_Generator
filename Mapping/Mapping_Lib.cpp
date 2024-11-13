@@ -108,7 +108,7 @@ unsigned Mapping::read_actor_weights(
 	xml_document<char>* doc = new xml_document<char>;
 	{
 		std::ifstream network_file(path, std::ifstream::in);
-		if (network_file.bad()) {
+		if (network_file.fail()) {
 			throw Converter_Exception{ "Cannot open the file " + path };
 		}
 		std::stringstream Top_network_buffer;
@@ -270,7 +270,7 @@ void Mapping::read_output_nodes(
 	xml_document<char>* doc = new xml_document<char>;
 	{
 		std::ifstream network_file(path, std::ifstream::in);
-		if (network_file.bad()) {
+		if (network_file.fail()) {
 			throw Converter_Exception{ "Cannot open the file " + path };
 		}
 		std::stringstream Top_network_buffer;
@@ -391,7 +391,7 @@ void Mapping::read_input_nodes(
 	xml_document<char>* doc = new xml_document<char>;
 	{
 		std::ifstream network_file(path, std::ifstream::in);
-		if (network_file.bad()) {
+		if (network_file.fail()) {
 			throw Converter_Exception{ "Cannot open the file " + path };
 		}
 		std::stringstream Top_network_buffer;
