@@ -403,8 +403,10 @@ Code_Generation_C_Cpp::generate_actor_code(
 		header_code.append("#define " + include_guard + "_H\n\n");
 		header_code.append(channel_include);
 		header_code.append("\n");
-		header_code.append("typedef enum " + class_name + "_fsm " + class_name + "_fsm_t;\n");
-		header_code.append("\n");
+		if (!instance->get_actor()->get_fsm().empty()) {
+			header_code.append("typedef enum " + class_name + "_fsm " + class_name + "_fsm_t;\n");
+			header_code.append("\n");
+		}
 		header_code.append("typedef struct " + class_name + " {\n");
 		auto tmp = class_variable_generation(instance, opt_data1, opt_data2, map_data,
 			constructor_parameter_name_type_map, unused_in_channels, unused_out_channels, d, "\t");
