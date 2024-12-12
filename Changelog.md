@@ -9,6 +9,7 @@
  * Properly check if file open operation failed, and stop operation in this case without reading from a file that wasn't opened properly
  * Check for multi-reader/writer ports/channels and stop operation if present
  * Don't generate FSM enum declaration if no FSM is present
+ * Also consider actor instances without connections during internal network respresentation initialization
 
 ## 1.3
 

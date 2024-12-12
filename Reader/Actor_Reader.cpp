@@ -61,6 +61,10 @@ void Network_Reader::read_actors(IR::Dataflow_Network* dpn){
 
 	create_actor_objects(dpn);
 
+	for (auto it = dpn->get_id_class_map().begin(); it != dpn->get_id_class_map().end(); ++it) {
+		check_instance_and_create(dpn, it->first, it->second);
+	}
+
 	for (auto it = dpn->get_edges().begin(); it != dpn->get_edges().end(); ++it) {
 
 		std::string src_id = it->get_src_id();
