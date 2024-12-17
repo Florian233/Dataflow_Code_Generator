@@ -10,6 +10,7 @@
  * Check for multi-reader/writer ports/channels and stop operation if present
  * Don't generate FSM enum declaration if no FSM is present
  * Also consider actor instances without connections during internal network respresentation initialization
+ * Guard conditions concatenated with comma are now evaluated properly and correct code is generated
 
 ## 1.3
 

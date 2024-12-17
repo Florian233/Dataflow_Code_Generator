@@ -396,6 +396,9 @@ void IR::Actor::parse_action(Action_Buffer& token_producer) {
 				if (t.str == "=") {
 					guard.append("==");
 				}
+				else if (t.str == ",") {
+					guard.append("&&");
+				}
 				else {
 					guard.append(t.str);
 				}
