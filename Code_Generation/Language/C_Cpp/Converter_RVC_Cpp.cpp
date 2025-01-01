@@ -1635,7 +1635,7 @@ namespace Converter_RVC_Cpp {
 				std::string value{};
 				bool only_const_values{ true };
 				while ((t.str != ":") && (t.str != ",") && (t.str != ";") && (t.str != "do")
-					&& (t.str != "begin"))
+					&& (t.str != "begin") && (t.str != "end"))
 				{
 					if (t.str == "=") {//here can be no assignment, so it must be ==
 						value.append(" == ");
@@ -1745,7 +1745,7 @@ namespace Converter_RVC_Cpp {
 				std::string value{};
 				bool only_const_values{ true };
 				while ((t.str != ":") && (t.str != ",") && (t.str != ";") && (t.str != "do")
-					&& (t.str != "begin"))
+					&& (t.str != "begin") && (t.str != "end"))
 				{
 					if (t.str == "=") {//here can be no assignment, so it must be ==
 						value.append(" == ");
