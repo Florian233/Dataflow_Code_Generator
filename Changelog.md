@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4
+
+### Added
+ * Replaced actor classification by a more general dataflow analysis phase including more analysis than only actor classification
+ 
+### Changed
+ * Improved architecture: Previous stages don't have dependency to code generation anymore.
+ * Minor bug fixes
+
 ## 1.3.1
 
 ### Added

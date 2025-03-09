@@ -1,12 +1,14 @@
 #pragma once
 
-#include "Actor_Instance.hpp"
-#include "Edge.hpp"
-#include "Actor.hpp"
+#include "IR/Actor_Instance.hpp"
+#include "IR/Edge.hpp"
+#include "IR/Actor.hpp"
+#include "IR/Unit.hpp"
 #include <vector>
 #include <map>
 
 namespace IR {
+
 	/* Information read during the first conversion phase, the network reading.
 	 * Later on only newly created composit actors might be added,
 	 * other than that this object shouldn't change!
@@ -20,6 +22,9 @@ namespace IR {
 		/* Map and actor instance to it's class path. */
 		std::map<std::string, std::string> id_class_map;
 
+		/* Map include paths to Unit objects to avoid loading them several times */
+		std::map<std::string, IR::Unit*> path_unit_map;
+
 		/* Tuple of (actor instance, parameter name, value) */
 		std::vector< std::tuple<std::string, std::string, std::string> > parameters;
 
@@ -29,12 +34,28 @@ namespace IR {
 
 		std::string name;
 
+		std::map<std::string, Actor_Instance*> name_instance_map;
+		std::map<unsigned, Actor_Instance*> id_instance_map;
+
+		std::vector<Actor_Instance*> inputs;
+		std::vector<Actor_Instance*> outputs;
+
 	public:
 
 		Dataflow_Network() {}
 
 		void add_actor_instance(Actor_Instance* actor) {
 			actor_instances.push_back(actor);
+			name_instance_map[actor->get_name()] = actor;
+			id_instance_map[actor->get_id()] = actor;
+		}
+
+		Actor_Instance* get_actor_instance(std::string name) {
+			return name_instance_map[name];
+		}
+
+		Actor_Instance* get_actor_instance_by_id(unsigned id) {
+			return id_instance_map[id];
 		}
 
 		void add_edge(Edge& e) {
@@ -107,5 +128,49 @@ namespace IR {
 		void set_name(std::string n) {
 			name = n;
 		}
+
+		void add_input(Actor_Instance* a) {
+			inputs.push_back(a);
+		}
+		std::vector<Actor_Instance*>& get_inputs(void) {
+			return inputs;
+		}
+
+		void add_output(Actor_Instance* a) {
+			outputs.push_back(a);
+		}
+		std::vector<Actor_Instance*>& get_outputs(void) {
+			return outputs;
+		}
+
+		void add_unit(std::string path, Unit* u) {
+			path_unit_map[path] = u;
+		}
+		Unit* get_unit(std::string path) {
+			if (path_unit_map.contains(path)) {
+				return path_unit_map[path];
+			}
+			else {
+				return nullptr;
+			}
+		}
 	};
+}
+
+static inline IR::Edge* find_in_edge(IR::Actor_Instance *inst, std::string port) {
+	for (IR::Edge* e : inst->get_in_edges()) {
+		if (e->get_dst_port() == port) {
+			return e;
+		}
+	}
+	return nullptr;
+}
+
+static inline IR::Edge* find_out_edge(IR::Actor_Instance *inst, std::string port) {
+	for (IR::Edge* e : inst->get_out_edges()) {
+		if (e->get_src_port() == port) {
+			return e;
+		}
+	}
+	return nullptr;
 }

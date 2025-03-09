@@ -1,5 +1,5 @@
 #include "Scheduling.hpp"
-#include "Scheduling_Lib/Scheduling_Lib.hpp"
+#include "Dataflow_Analysis/Scheduling_Lib/Scheduling_Lib.hpp"
 #include "Config/debug.h"
 #include "Config/config.h"
 #include <algorithm>
@@ -268,6 +268,11 @@ static std::string default_local(
 	}
 	output.append("#endif\n");
 	output.append(prefix + "}\n");// close scheduler method
+
+	if (c->get_target_language() == Target_Language::c) {
+		/* Avoid true as it might not be defined. */
+		replace_all_substrings(output, "(true)", "(1)");
+	}
 
 	return output;
 }
@@ -566,7 +571,8 @@ std::string Scheduling::generate_local_scheduler(
 	Actor_Classification output_classification,
 	std::string prefix,
 	std::string schedule_function_name,
-	std::string schedule_function_parameter)
+	std::string schedule_function_parameter,
+	unsigned scheduling_loop_bound)
 {
 	Config* c = c->getInstance();
 	std::map<std::string, std::vector< Channel_Schedule_Data > > actions = conversion_data.get_scheduling_data();
@@ -653,12 +659,12 @@ std::string Scheduling::generate_local_scheduler(
 		sched_loop.append("\n");
 	}
 
-	if (c->get_bound_local_sched_loops()) {
-		sched_loop.append(prefix + "\tfor(unsigned sched_loops = 0; sched_loops < "
-			+ std::to_string(c->get_local_sched_loop_num()) + "; ++sched_loops) {\n");
+	if (scheduling_loop_bound != 0) {
+		sched_loop.append(prefix + "\tfor (unsigned sched_loops = 0; sched_loops < "
+			+ std::to_string(scheduling_loop_bound) + "; ++sched_loops) {\n");
 	}
 	else {
-		sched_loop.append(prefix + "\tfor(;;) {\n");
+		sched_loop.append(prefix + "\tfor (;;) {\n");
 	}
 
 	//init with empty first so we don't need to care later and keep the guarantee that every action is in there

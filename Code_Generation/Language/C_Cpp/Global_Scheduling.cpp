@@ -1,9 +1,7 @@
 #include "Scheduling.hpp"
 #include "Config/config.h"
-#include "Scheduling_Lib/Scheduling_Lib.hpp"
+#include "Dataflow_Analysis/Scheduling_Lib/Scheduling_Lib.hpp"
 #include "ABI/abi.hpp"
-
-//TODO: C code generation
 
 static std::string find_class_name(
 	std::string actor_name,

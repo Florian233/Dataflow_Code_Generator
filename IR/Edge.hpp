@@ -20,6 +20,8 @@ namespace IR {
 
 		bool deleted{ false };
 
+		bool feedback = false;
+
 	public:
 		Edge(Actor_Instance* so, Actor_Instance* si) : source(so), sink(si) {
 
@@ -121,6 +123,10 @@ namespace IR {
 			src_network_instance_port = b;
 		}
 
+		std::string get_name(void) {
+			return src_id + "_" + src_port + "_" + dst_id +"_" + dst_port;
+		}
+
 		void set_deleted(void) {
 			deleted = true;
 		}
@@ -129,5 +135,11 @@ namespace IR {
 			return deleted;
 		}
 
+		void set_feedback(void) {
+			feedback = true;
+		}
+		bool get_feedback(void) {
+			return feedback;
+		}
 	};
 }

@@ -35,10 +35,10 @@ namespace Converter_RVC_Cpp {
 		std::string output{};
 		if (t.str == "\"") {
 			output.append("\"");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while (t.str != "\"") {
 				if (t.str == "\\") {
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					output.append("\\" + t.str);
 				}
 				else if (t.str == "") {
@@ -47,14 +47,14 @@ namespace Converter_RVC_Cpp {
 				else {
 					output.append(t.str);
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if (t.str != "\"") {
 					output.append(" ");
 				}
 			}
 			output.append("\"");
 			//must be string termination
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		return output;
 	}
@@ -84,7 +84,7 @@ namespace Converter_RVC_Cpp {
 			else {
 				output.append("(");
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			bool something_to_print{ false };
 			bool to_string_added{ false };
 			while (t.str != ")") {
@@ -102,7 +102,7 @@ namespace Converter_RVC_Cpp {
 						to_string_added = false;
 					}
 					output.append(" << ");
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else if (t.str == "") {
 					throw Wrong_Token_Exception{ "Unexpected End of File." };
@@ -120,13 +120,13 @@ namespace Converter_RVC_Cpp {
 						output.append(t.str);
 					}
 					something_to_print = true;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			if (!(println && c->get_target_language() == Target_Language::cpp) || to_string_added) {
 				output.append(")");
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (println && !something_to_print) {
 				//if the brackets are empty there is nothing to print,
 				//so a empty string will be returned to avoid << << without anything in between
@@ -143,7 +143,7 @@ namespace Converter_RVC_Cpp {
 			Token_Container& token_prod)
 		{
 			std::string output{ "{" };
-			t = token_prod.get_next_Token();
+			t = token_prod.get_next_token();
 			while ((t.str != "]") && (t.str != "}")) {
 				if ((t.str == "[") || (t.str == "{")) {
 					output.append(get_full_list(t, token_prod));
@@ -153,11 +153,11 @@ namespace Converter_RVC_Cpp {
 				}
 				else {
 					output.append(t.str);
-					t = token_prod.get_next_Token();
+					t = token_prod.get_next_token();
 				}
 			}
 			output.append("}");
-			t = token_prod.get_next_Token();
+			t = token_prod.get_next_token();
 			return output;
 		}
 
@@ -171,7 +171,7 @@ namespace Converter_RVC_Cpp {
 		{
 			int return_value{ 0 };
 			if (t.str == "++") {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if (local_map.find(t.str) != local_map.end()) {
 					return_value = std::stoi(local_map[t.str]);
 				}
@@ -182,10 +182,10 @@ namespace Converter_RVC_Cpp {
 					return_value = std::stoi(t.str);
 				}
 				return_value++;
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "--") {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if (local_map.find(t.str) != local_map.end()) {
 					return_value = std::stoi(local_map[t.str]);
 				}
@@ -196,42 +196,42 @@ namespace Converter_RVC_Cpp {
 					return_value = std::stoi(t.str);
 				}
 				return_value--;
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (local_map.find(t.str) != local_map.end()) {
 				return_value = std::stoi(local_map[t.str]);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if (t.str == "++") {
 					return_value++;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else if (t.str == "--") {
 					return_value--;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			else if (global_map.find(t.str) != global_map.end()) {
 				return_value = std::stoi(global_map[t.str]);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if (t.str == "++") {
 					return_value++;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else if (t.str == "--") {
 					return_value--;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			else {
 				return_value = std::stoi(t.str);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if (t.str == "++") {
 					return_value++;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else if (t.str == "--") {
 					return_value--;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			return return_value;
@@ -253,10 +253,10 @@ namespace Converter_RVC_Cpp {
 		{
 			int return_value{ 0 };
 			if ((t.str == "+") || (t.str == "-")) {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				while ((t.str != "+") && (t.str != "-") && (t.str != ")")) {
 					if (t.str == "*") {
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 						if (t.str == "(") {
 							return_value =
 								return_value * evaluate_size(t, token_producer, global_map, local_map, true);
@@ -267,7 +267,7 @@ namespace Converter_RVC_Cpp {
 						}
 					}
 					else if (t.str == "/") {
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 						if (t.str == "(") {
 							return_value =
 								return_value / evaluate_size(t, token_producer, global_map, local_map, true);
@@ -301,7 +301,7 @@ namespace Converter_RVC_Cpp {
 			std::map<std::string, std::string>& local_map)
 		{
 			Tokenizer token_producer{ "(" + expression + ")"}; //place brackets around the expression to reuse evaluate_size
-			Token t = token_producer.get_next_Token();
+			Token t = token_producer.get_next_token();
 			return evaluate_size(t, token_producer, global_map, local_map, true);
 		}
 	
@@ -318,10 +318,10 @@ namespace Converter_RVC_Cpp {
 				if (t.str != "(") {
 					return 32;
 				}
-				t = token_producer.get_next_Token();//size
-				t = token_producer.get_next_Token();//=
+				t = token_producer.get_next_token();//size
+				t = token_producer.get_next_token();//=
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			int return_value{ 0 };
 			while (t.str != ")") {
 				if (t.str == "+") {
@@ -333,7 +333,7 @@ namespace Converter_RVC_Cpp {
 						evaluate_plus_minus_followup(t, token_producer, global_map, local_map);
 				}
 				else if (t.str == "*") {
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					if (t.str == "(") {
 						return_value =
 							return_value * evaluate_size(t, token_producer, global_map, local_map, true);
@@ -344,7 +344,7 @@ namespace Converter_RVC_Cpp {
 					}
 				}
 				else if (t.str == "/") {
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					if (t.str == "(") {
 						return_value =
 							return_value / evaluate_size(t, token_producer, global_map, local_map, true);
@@ -366,7 +366,7 @@ namespace Converter_RVC_Cpp {
 					}
 				}
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			return return_value;
 		}
 
@@ -492,7 +492,7 @@ namespace Converter_RVC_Cpp {
 			std::string adjusted_prefix{ prefix };
 			while ((t.str != "do") && (t.str != "}") && (t.str != ":")) { // } due to list comprehension 
 				if ((t.str == "for") || (t.str == "foreach")) {
-					t = token_prod.get_next_Token();
+					t = token_prod.get_next_token();
 					if ((t.str == "uint") || (t.str == "int") || (t.str == "String")
 						|| (t.str == "bool") || (t.str == "half") || (t.str == "float"))
 					{
@@ -503,32 +503,32 @@ namespace Converter_RVC_Cpp {
 						std::string var_name{ t.str };
 						local_map[var_name] = "";
 						symbol_type_map[var_name] = type;
-						t = token_prod.get_next_Token(); //in
-						t = token_prod.get_next_Token(); //start value
+						t = token_prod.get_next_token(); //in
+						t = token_prod.get_next_token(); //start value
 						while (t.str != "..") {
 							if (t.str == "") {
 								throw Wrong_Token_Exception{ "Unexpected End of File." };
 							}
 							head.append(t.str);
-							t = token_prod.get_next_Token();
+							t = token_prod.get_next_token();
 						}
 						head.append(";");
-						t = token_prod.get_next_Token(); //skip .. 
+						t = token_prod.get_next_token(); //skip .. 
 						head.append(var_name + " <= ");
 						while (t.str != "do" && t.str != "," && t.str != ":" && t.str != "}") {
 							if (t.str == "") {
 								throw Wrong_Token_Exception{ "Unexpected End of File." };
 							}
 							head.append(t.str);
-							t = token_prod.get_next_Token();
+							t = token_prod.get_next_token();
 						}
 						head.append("; ++" + var_name + ") {\n");
 					}
 					else {//no type, directly variable name, indicates foreach loop
 						std::string vv = t.str;
 						local_map[vv] = "";
-						t = token_prod.get_next_Token();//in
-						t = token_prod.get_next_Token();
+						t = token_prod.get_next_token();//in
+						t = token_prod.get_next_token();
 						std::string r;
 						if ((t.str == "[") || (t.str == "{")) {
 							r.append(get_full_list(t, token_prod));
@@ -552,7 +552,7 @@ namespace Converter_RVC_Cpp {
 					tail.insert(0, adjusted_prefix + "}\n");
 					if (t.str == ",") {
 						//a komma indicates a further loop head, thus the next token has to be inspected
-						t = token_prod.get_next_Token();
+						t = token_prod.get_next_token();
 						adjusted_prefix.append("\t");
 					}
 				}
@@ -575,15 +575,15 @@ namespace Converter_RVC_Cpp {
 		{
 			std::string output{};
 			if (t.str == "List") {
-				t = token_producer.get_next_Token();//(
-				t = token_producer.get_next_Token(); //type
-				t = token_producer.get_next_Token(); //:
-				t = token_producer.get_next_Token(); // type argument
+				t = token_producer.get_next_token();//(
+				t = token_producer.get_next_token(); //type
+				t = token_producer.get_next_token(); //:
+				t = token_producer.get_next_token(); // type argument
 				if (t.str == "List") {
 					output = convert_sub_list(t, token_producer, global_map, local_map, symbol, type);
-					t = token_producer.get_next_Token();//size
-					t = token_producer.get_next_Token();//=
-					t = token_producer.get_next_Token(); //start of size value
+					t = token_producer.get_next_token();//size
+					t = token_producer.get_next_token();//=
+					t = token_producer.get_next_token(); //start of size value
 					size_t insert_point = output.find_first_of("[");
 					std::string insert_string{ "[" };
 					while(t.str != ")"){
@@ -594,32 +594,32 @@ namespace Converter_RVC_Cpp {
 							&& (global_map[t.str] != "") && (global_map[t.str] != "function"))
 						{
 							insert_string.append(global_map[t.str]);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 						else if ((local_map.find(t.str) != local_map.end())
 							&& (local_map[t.str] != "") && (local_map[t.str] != "function"))
 						{
 							insert_string.append(local_map[t.str]);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 						else if (t.str == "") {
 							throw Wrong_Token_Exception{ "Unexpected End of File." };
 						}
 						else {
 							insert_string.append(t.str);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 					}
 					insert_string.append("]");
 					output.insert(insert_point, insert_string);
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else {
 					output = convert_type(t, token_producer, global_map, local_map) + " ";//after the function the token should contain a komma
 					type.append(output);
-					t = token_producer.get_next_Token(); //size
-					t = token_producer.get_next_Token(); //=
-					t = token_producer.get_next_Token(); //start of size value
+					t = token_producer.get_next_token(); //size
+					t = token_producer.get_next_token(); //=
+					t = token_producer.get_next_token(); //start of size value
 					output.append("[" );
 					while (t.str != ")") {
 						if (t.str == "(") {
@@ -629,24 +629,24 @@ namespace Converter_RVC_Cpp {
 							&& (global_map[t.str] != "") && (global_map[t.str] != "function"))
 						{
 							output.append(global_map[t.str]);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 						else if ((local_map.find(t.str) != local_map.end())
 							&& (local_map[t.str] != "") && (local_map[t.str] != "function"))
 						{
 							output.append(local_map[t.str]);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 						else if (t.str == "") {
 							throw Wrong_Token_Exception{ "Unexpected End of File." };
 						}
 						else {
 							output.append(t.str);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 					}
 					output.append("]");
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			return output;
@@ -672,9 +672,9 @@ namespace Converter_RVC_Cpp {
 				throw Wrong_Token_Exception{ "Unexpected End of File." };
 			}
 			condition.append(t.str + " ");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
-		t = token_producer.get_next_Token(); // skip "?"
+		t = token_producer.get_next_token(); // skip "?"
 		int count{ 1 };
 		bool nested{ false };
 		while (count != 0) {
@@ -682,12 +682,12 @@ namespace Converter_RVC_Cpp {
 				++count;
 				nested = true;
 				expression1.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == ":") {
 				--count;
 				expression1.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "[") {
 				expression1.append(convert_brackets(t, token_producer, true, global_map, local_map).first);
@@ -697,7 +697,7 @@ namespace Converter_RVC_Cpp {
 			}
 			else {
 				expression1.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 		expression1.erase(expression1.size() - 2, 2);//remove last :
@@ -725,12 +725,12 @@ namespace Converter_RVC_Cpp {
 				++count;
 				nested = true;
 				expression2.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == ":") {
 				--count;
 				expression2.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "") {
 				break;
@@ -743,7 +743,7 @@ namespace Converter_RVC_Cpp {
 			}
 			else {
 				expression2.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 		if (nested) {
@@ -782,7 +782,7 @@ namespace Converter_RVC_Cpp {
 		std::string outer_expression)
 	{
 		Tokenizer tok{ string_to_convert };
-		Token t = tok.get_next_Token();
+		Token t = tok.get_next_token();
 		return convert_inline_if_with_list_assignment(t, tok, global_map, local_map, symbol_type_map, prefix, outer_expression);
 	}
 
@@ -795,17 +795,17 @@ namespace Converter_RVC_Cpp {
 		bool convert_to_if{ false };
 		bool condition_done{ false };
 		if (t.str == "if") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while ((t.str != "end") && (t.str != "endif")) {
 				if (t.str == "then") {
 					condition_done = true;
 					output.append("?");
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					previous_token_string = "?";
 				}
 				else if (t.str == "else") {
 					output.append(":");
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					previous_token_string = ":";
 				}
 				else if (t.str == "if") {
@@ -834,10 +834,10 @@ namespace Converter_RVC_Cpp {
 						output.append(" " + t.str);
 					}
 					previous_token_string = t.str;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		return std::make_pair(output,convert_to_if);
 	}
@@ -851,7 +851,7 @@ namespace Converter_RVC_Cpp {
 			std::string output;
 			if (t.str == "{") {
 				output.append(t.str);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				while (t.str != "}") {
 					if (t.str == "{") {
 						output.append(read_brace(t, token_producer));
@@ -864,11 +864,11 @@ namespace Converter_RVC_Cpp {
 					}
 					else {
 						output.append(t.str + " ");
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 				}
 				output.append(t.str);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			return output;
 		}
@@ -889,7 +889,7 @@ namespace Converter_RVC_Cpp {
 			while (list_name.find(" ") != std::string::npos) {
 				list_name = list_name.erase(list_name.find(" "), 1);
 			}
-			t = token_producer.get_next_Token(); //drop {
+			t = token_producer.get_next_token(); //drop {
 			std::string index_name{ find_unused_name(global_map, local_map) };
 			std::string output{ prefix + "int " + index_name + "{0};\n" };
 			std::string command{ };
@@ -898,7 +898,7 @@ namespace Converter_RVC_Cpp {
 				if (t.str == "{" ) {//nested list comprehension
 					std::string buffer{ read_brace(t,token_producer,false) };
 					Tokenizer tok{ buffer };
-					Token token_tok = tok.get_next_Token();
+					Token token_tok = tok.get_next_token();
 					std::string expr;
 					if (nested) {
 						expr = outer_expression + "[" + index_name + "]";
@@ -955,11 +955,11 @@ namespace Converter_RVC_Cpp {
 						}
 						else {
 							tmp_command.append(t.str);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 					}
 					if (t.str == ":") {
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 						std::pair<std::string, std::string> head_tail =
 								convert_for_head(t, token_producer, local_map, symbol_type_map, prefix);
 						output.append(head_tail.first);
@@ -1010,13 +1010,13 @@ namespace Converter_RVC_Cpp {
 					}
 				}
 				if (t.str == ",") {
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					output.append(prefix + "++" + index_name + ";\n");
 					had_inner_list_comprehension = false;
 				}
 
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			return output;
 		}
 
@@ -1033,7 +1033,7 @@ namespace Converter_RVC_Cpp {
 			std::replace(string_to_convert.begin(), string_to_convert.end(), '[', '{');
 			std::replace(string_to_convert.begin(), string_to_convert.end(), ']', '}');
 			Tokenizer token_producer{ string_to_convert };
-			Token t = token_producer.get_next_Token();//this must be the start of the list; { - can be dropped
+			Token t = token_producer.get_next_token();//this must be the start of the list; { - can be dropped
 			return prefix + "{\n" + convert_list_comprehension(t, token_producer, list_name,
 																global_map, local_map, symbol_type_map,
 																prefix + "\t")
@@ -1061,7 +1061,7 @@ namespace Converter_RVC_Cpp {
 				output.append("[");
 			}
 			previous_token_string = t.str;
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			for (;;) {
 				if ((t.str == "[") || (t.str == "{")) {
 					if ((previous_token_string == "[") || (previous_token_string == ",")) {
@@ -1090,13 +1090,13 @@ namespace Converter_RVC_Cpp {
 						output.append(" ]"); 
 					}
 					previous_token_string = t.str;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					break;
 				}
 				else if (t.str == ":") {
 					//FOUND LIST COMPREHENSION!!!!!!!!!
 					previous_token_string = t.str;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					output.append(":");
 					list_comprehension = true;
 				}
@@ -1122,7 +1122,7 @@ namespace Converter_RVC_Cpp {
 						output.append(" "+t.str);
 					}
 					previous_token_string = t.str;
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 		}
@@ -1140,13 +1140,13 @@ namespace Converter_RVC_Cpp {
 		Config* c = c->getInstance();
 		if (t.str == "function") {
 			std::string output{ prefix };
-			t = token_producer.get_next_Token();//name
+			t = token_producer.get_next_token();//name
 			std::string symbol_name{ t.str };
 			global_map[t.str] = "function";
-			t = token_producer.get_next_Token();//(
+			t = token_producer.get_next_token();//(
 			std::string params;
 			params.append("(");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while (t.str != ")") {
 				if ((t.str == "uint") || (t.str == "int") || (t.str == "String")
 					|| (t.str == "bool") || (t.str == "half") || (t.str == "float"))
@@ -1160,25 +1160,25 @@ namespace Converter_RVC_Cpp {
 				else {
 					params.append(t.str);
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			params.append(")");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (t.str != "-->") {
 				std::cerr << "Error parsing function";
 			}
-			t = token_producer.get_next_Token();//must be the return type
+			t = token_producer.get_next_token();//must be the return type
 			if (c->get_target_language() == Target_Language::c) {
 				output.append("static ");
 			}
 			output.append(convert_type(t, token_producer, global_map, local_map) + " " + symbol_name + params + "{\n");
 			// HEAD END
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while ((t.str != "end") && (t.str != "endfunction")) {
 				if ((t.str == "var") || (t.str == "begin") || (t.str == "do")
 					|| (t.str == ":") || (t.str == ","))
 				{
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else if (t.str == "if") {
 					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, true, prefix + "\t"));
@@ -1200,7 +1200,7 @@ namespace Converter_RVC_Cpp {
 				}
 			}
 			output.append(prefix + "}\n");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if ((symbol_name != symbol) && (symbol != "*")) {
 				return "";//jump out of this procedure if the symbol is not required by the caller
 			}
@@ -1227,13 +1227,13 @@ namespace Converter_RVC_Cpp {
 				output.append("static ");
 			}
 			output.append("void ");
-			t = token_producer.get_next_Token();//name
+			t = token_producer.get_next_token();//name
 			output.append(t.str);
 			std::string symbol_name{ t.str };
 			global_map[t.str] = "function";
-			t = token_producer.get_next_Token();//(
+			t = token_producer.get_next_token();//(
 			output.append("(");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while (t.str != ")") {
 				if ((t.str == "uint") || (t.str == "int") || (t.str == "String")
 					|| (t.str == "bool") || (t.str == "half") || (t.str == "float"))
@@ -1248,13 +1248,13 @@ namespace Converter_RVC_Cpp {
 				else {
 					output.append(t.str);
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			output.append(") {\n");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while ((t.str != "end") && (t.str != "endprocedure")) {
 				if ((t.str == "var") || (t.str == "begin") || (t.str == "do") || (t.str == ":")) {
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else if (t.str == "if") {
 					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, false, prefix + "\t"));
@@ -1276,7 +1276,7 @@ namespace Converter_RVC_Cpp {
 				}
 			}
 			output.append(prefix + "}\n");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if ((symbol_name != symbol) && (symbol != "*")) {
 				return "";//jump out of this procedure if the symbol is not required by the caller
 			}
@@ -1305,7 +1305,7 @@ namespace Converter_RVC_Cpp {
 			else {
 				output.append(prefix + "if(");
 			}
-			t = token_producer.get_next_Token(); // skip if
+			t = token_producer.get_next_token(); // skip if
 			while (t.str != "then") {
 				if (t.str == "=") {
 					output.append(" == ");
@@ -1316,13 +1316,13 @@ namespace Converter_RVC_Cpp {
 				else {
 					output.append(t.str + " ");
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			output.append("){\n");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while ((t.str != "end") && (t.str != "endif")) {
 				if (t.str == "else") {
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 					if (t.str == "if") {
 						output.append(prefix + "} else ");
 						output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix, true));
@@ -1350,7 +1350,7 @@ namespace Converter_RVC_Cpp {
 			if (!nested) {
 				output.append(prefix + "}\n");
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		return output;
 	}
@@ -1369,7 +1369,7 @@ namespace Converter_RVC_Cpp {
 		if ((t.str == "for") || (t.str == "foreach")) {
 			std::pair<std::string, std::string> head_tail = convert_for_head(t, token_producer, local_map, symbol_type_map);//t should contain do after this function
 			output.append(prefix + head_tail.first);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while ((t.str != "end") && (t.str != "endfor") && (t.str != "endforeach")) {
 				if (t.str == "if") {
 					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
@@ -1388,7 +1388,7 @@ namespace Converter_RVC_Cpp {
 				}
 			}
 			output.append(prefix + head_tail.second);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		return output;
 	}
@@ -1404,7 +1404,7 @@ namespace Converter_RVC_Cpp {
 	{
 		std::string output{};
 		if (t.str == "while") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			output.append(prefix + "while(");
 			while ((t.str != "do") && (t.str != ":")) {
 				if (t.str == "=") {
@@ -1416,10 +1416,10 @@ namespace Converter_RVC_Cpp {
 				else {
 					output.append(t.str);
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			output.append("){\n");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while ((t.str != "end") && (t.str != "endwhile")) {
 				if (t.str == "if") {
 					output.append(convert_if(t, token_producer, global_map, local_map, symbol_type_map, return_statement, prefix + "\t"));
@@ -1438,7 +1438,7 @@ namespace Converter_RVC_Cpp {
 				}
 			}
 			output.append(prefix + "}\n");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		return output;
 	}
@@ -1573,17 +1573,17 @@ namespace Converter_RVC_Cpp {
 		else {
 			output.append(t.str);
 		}
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		while (t.str == "[") {
 			output.append(convert_brackets(t, token_producer, false, global_map, local_map, prefix).first);
 		}
 		if (t.str == ":=") {
 			output.insert(0, prefix);
 			output.append(" = ");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (t.str == "\"") {
 				output.append(convert_string(t, token_producer) + ";");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "[") {
 				std::pair<std::string, bool> ret_val =
@@ -1610,7 +1610,7 @@ namespace Converter_RVC_Cpp {
 						output = convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, symbol_type_map, prefix);
 					}
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "if") {
 				auto tmp = convert_inline_if(t, token_producer);
@@ -1639,7 +1639,7 @@ namespace Converter_RVC_Cpp {
 				{
 					if (t.str == "=") {//here can be no assignment, so it must be ==
 						value.append(" == ");
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 					else if (t.str == "if") {
 						value.append(convert_inline_if(t, token_producer).first);
@@ -1653,15 +1653,15 @@ namespace Converter_RVC_Cpp {
 						if (!is_const(t.str, global_map, local_map)) {
 							only_const_values = false;
 							if ((global_map.count(t.str) > 0) && (global_map[t.str] == "function")) {
-								t = token_producer.get_next_Token();
+								t = token_producer.get_next_token();
 								value.append(convert_function_call_brakets(t, token_producer));
 							}
 							else {
-								t = token_producer.get_next_Token();
+								t = token_producer.get_next_token();
 							}
 						}
 						else {
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 					}
 
@@ -1687,10 +1687,10 @@ namespace Converter_RVC_Cpp {
 				}
 			}
 			output.append(" = ");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (t.str == "\"") {
 				output.append(convert_string(t, token_producer) + ";");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "[") {
 				std::pair<std::string, bool> ret_val = convert_brackets(t, token_producer, true, global_map, local_map, prefix);
@@ -1719,7 +1719,7 @@ namespace Converter_RVC_Cpp {
 							convert_list_comprehension(ret_val.first, symbol_name, global_map, local_map, symbol_type_map, prefix);
 					}
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "if") {
 				auto tmp = convert_inline_if(t, token_producer);
@@ -1749,7 +1749,7 @@ namespace Converter_RVC_Cpp {
 				{
 					if (t.str == "=") {//here can be no assignment, so it must be ==
 						value.append(" == ");
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 					else if (t.str == "if") {
 						value.append(convert_inline_if(t, token_producer).first);
@@ -1763,15 +1763,15 @@ namespace Converter_RVC_Cpp {
 						if (!is_const(t.str, global_map, local_map)) {
 							only_const_values = false;
 							if ((global_map.count(t.str) > 0) && (global_map[t.str] == "function")) {
-								t = token_producer.get_next_Token();
+								t = token_producer.get_next_token();
 								value.append(convert_function_call_brakets(t, token_producer));
 							}
 							else {
-								t = token_producer.get_next_Token();
+								t = token_producer.get_next_token();
 							}
 						}
 						else {
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 					}
 					
@@ -1815,13 +1815,13 @@ namespace Converter_RVC_Cpp {
 					else {
 						output.append(t.str);
 					}
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			output.append(";\n");
 		}
 		if ((t.str == ";") || (t.str == ",")) {
-			t = token_producer.get_next_Token(); //must drop this token, because ; and , can end one expression, but if it is the last expression in this block, there is no line termination
+			t = token_producer.get_next_token(); //must drop this token, because ; and , can end one expression, but if it is the last expression in this block, there is no line termination
 		}
 		if ((symbol_name != symbol) && (symbol != "*")) {
 			return ""; //stop is symbol is not requested - but must be inserted into the map before
@@ -1856,11 +1856,11 @@ namespace Converter_RVC_Cpp {
 		std::string name{ t.str };
 		local_map[name] = ""; // insert to check for name collisions
 		symbol_type_map[name] = type;
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		if (t.str == ":=") {
 			s.insert(0, prefix);
 			s.append(" = ");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			std::pair<std::string, bool> ret_val =
 				convert_brackets(t, token_producer, true, global_map, local_map, prefix);
 			if (ret_val.second == true) {
@@ -1872,7 +1872,7 @@ namespace Converter_RVC_Cpp {
 			else {
 				s.append(ret_val.first + ";\n");
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		else if (t.str == "=") {
 			if (c->get_target_language() == Target_Language::c) {
@@ -1882,7 +1882,7 @@ namespace Converter_RVC_Cpp {
 				s.insert(0, prefix + "const ");
 			}
 			s.append(" = ");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			std::pair<std::string, bool> ret_val =
 				convert_brackets(t, token_producer, true, global_map, local_map, prefix);
 			if (ret_val.second == true) {
@@ -1895,12 +1895,12 @@ namespace Converter_RVC_Cpp {
 			else {
 				s.append(ret_val.first + ";\n");
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		else {
 			s.append(";\n");
 			s.insert(0, prefix);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		if ((name != symbol) && (symbol != "*")) {//no the requestes symbol -> return empty string
 			return "";
@@ -1924,7 +1924,7 @@ namespace Converter_RVC_Cpp {
 		std::map<std::string, std::string>& local_map)
 	{
 		if (t.str == "int") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			int value = evaluate_size(t, token_producer, global_map, local_map);
 			if (value <= 8) {
 				return "char";
@@ -1943,7 +1943,7 @@ namespace Converter_RVC_Cpp {
 			}
 		}
 		else if (t.str == "uint") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			int value = evaluate_size(t, token_producer, global_map, local_map);
 			if (value <= 8) {
 				return "unsigned char";
@@ -1962,33 +1962,33 @@ namespace Converter_RVC_Cpp {
 			}
 		}
 		else if (t.str == "bool") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (t.str == "(") {//bool shouldnt consist of a size, but just in case it does the tokens will be dropped
 				while (t.str != ")") {
 					if (t.str == "") {
 						throw Wrong_Token_Exception{ "Unexpected End of File." };
 					}
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			return "bool";
 		}
 		else if (t.str == "String") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (t.str == "(") {//there shouldnt be a size specified, but if it is, drop it
 				while (t.str != ")") {
 					if (t.str == "") {
 						throw Wrong_Token_Exception{ "Unexpected End of File." };
 					}
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			return "const char*";
 		}
 		else if (t.str == "float") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			int value = evaluate_size(t, token_producer, global_map, local_map);
 			if (value <= 16) {
 				return "half";
@@ -2004,7 +2004,7 @@ namespace Converter_RVC_Cpp {
 			}
 		}
 		else if (t.str == "half") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			int value = evaluate_size(t, token_producer, global_map, local_map);
 			if (value <= 16) {
 				return "half";
@@ -2037,27 +2037,27 @@ namespace Converter_RVC_Cpp {
 		Config* c = c->getInstance();
 
 		if (t.str == "@native") {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if ((t.str != "function") && (t.str != "procedure")) {
 				throw Wrong_Token_Exception{ "Expected function but found " + t.str + "."};
 			}
 			if (t.str == "function") {
 				function = true;
 			}
-			t = token_producer.get_next_Token(); //name
+			t = token_producer.get_next_token(); //name
 			if ((t.str == symbol) || (symbol == "*")) {
 				global_map[t.str] = "function";
 				actor_conversion_data.add_native_function(t.str);
 				add = true;
 			}
 			declaration.append(t.str);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 
 			if (t.str != ("(")) {
 				throw Wrong_Token_Exception{ "Expected \"(\" but found " + t.str +"." };
 			}
 			declaration.append(t.str);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 
 			while (t.str != ")") {
 				if ((t.str == "uint") || (t.str == "int") || (t.str == "String")
@@ -2074,15 +2074,15 @@ namespace Converter_RVC_Cpp {
 					std::cout << "Native function conversion failed at token " << t.str << std::endl;
 					exit(5);
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			declaration.append(")");
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (function) {
 				if (t.str != "-->") {
 					throw Wrong_Token_Exception{ " Expected \"-->\" during native function declaration conversion but found \"" + t.str + "\"." };
 				}
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				// must be the type
 				std::string return_type = convert_type(t, token_producer, global_map, global_map);
 				if (c->get_target_language() == Target_Language::c) {
@@ -2110,7 +2110,7 @@ namespace Converter_RVC_Cpp {
 					throw Wrong_Token_Exception{ "Expected procedure end but found " + t.str };
 				}
 			}
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		else {
 			throw Wrong_Token_Exception{ "Expected a native declaration but found:" + t.str };
@@ -2146,10 +2146,10 @@ namespace Converter_RVC_Cpp {
 		std::string output{ prefix + "{\n" };
 		std::map<std::string, std::string> scope_local_map{ local_map };
 		std::map<std::string, std::string> scope_local_type_map{ symbol_type_map };
-		t = token_producer.get_next_Token(); //skip begin
+		t = token_producer.get_next_token(); //skip begin
 		while (t.str != "end") {
 			if ((t.str == "var") || (t.str == "do")) {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			else if (t.str == "begin") {
 				output.append(convert_scope(t, token_producer, global_map, scope_local_map, scope_local_type_map, prefix + "\t"));
@@ -2168,7 +2168,7 @@ namespace Converter_RVC_Cpp {
 			}
 		}
 		output.append(prefix + "}\n");
-		t = token_producer.get_next_Token(); //skip end
+		t = token_producer.get_next_token(); //skip end
 		return output;
 	}
 
@@ -2186,7 +2186,7 @@ namespace Converter_RVC_Cpp {
 			throw Wrong_Token_Exception{ "Expected \'(\' but found " + t.str };
 		}
 
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		//t must be a type now and we can start parsing
 		while (t.str != ")") {
 			std::string type;
@@ -2195,10 +2195,10 @@ namespace Converter_RVC_Cpp {
 
 			type = convert_type(t, token_producer, global_map);
 			name = t.str;
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (t.str == "=") {
 				// default value given
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				while ((t.str != ")") && (t.str != ",")) {
 					if (global_map.contains(t.str)) {
 						default_value.append(global_map[t.str]);
@@ -2206,11 +2206,11 @@ namespace Converter_RVC_Cpp {
 					else {
 						default_value.append(t.str);
 					}
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			if (t.str == ",") {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			global_map[name] = default_value;
 			if (!default_value.empty()) {
@@ -2219,7 +2219,7 @@ namespace Converter_RVC_Cpp {
 			name_type_map[name] = type;
 			result.append(prefix + type + " " + name + ";\n");
 		}
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		return result;
 	}
 }

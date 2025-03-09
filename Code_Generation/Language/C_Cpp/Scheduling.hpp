@@ -5,8 +5,8 @@
 #include <set>
 #include "IR/Dataflow_Network.hpp"
 #include "IR/Actor.hpp"
-#include "Actor_Classification/Actor_Classification.hpp"
-#include "Scheduling_Lib/Scheduling_Data.hpp"
+#include "Dataflow_Analysis/Actor_Classification/Actor_Classification.hpp"
+#include "Dataflow_Analysis/Scheduling_Lib/Scheduling_Data.hpp"
 #include "Mapping/Mapping.hpp"
 #include "Optimization_Phase1/Optimization_Phase1.hpp"
 #include "Optimization_Phase2/Optimization_Phase2.hpp"
@@ -28,7 +28,8 @@ namespace Scheduling {
 		Actor_Classification output_classification,
 		std::string prefix,
 		std::string schedule_function_name,
-		std::string schedule_function_parameter);
+		std::string schedule_function_parameter,
+		unsigned scheduling_loop_bound);
 
 	/* Generate a global scheduler based on the mapping stored in the IR of the actor instances
 	 * and the Configuration.

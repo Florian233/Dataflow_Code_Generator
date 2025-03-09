@@ -3,19 +3,19 @@
 #include <sstream>
 #include <filesystem>
 #include "Config/config.h"
-#include "Config/debug.h"
 #include "IR/Dataflow_Network.hpp"
 #include "Reader/Reader.hpp"
-#include "Actor_Classification/Actor_Classification.hpp"
+#include "Dataflow_Analysis/Actor_Classification/Actor_Classification.hpp"
 #include "Optimization_Phase1/Optimization_Phase1.hpp"
 #include "Optimization_Phase2/Optimization_Phase2.hpp"
 #include "Mapping/Mapping.hpp"
 #include "Code_Generation/Code_Generation.hpp"
+#include "Dataflow_Analysis/Dataflow_Analysis.hpp"
 using namespace std;
 
 Config* Config::instance = 0;
 
-void parse_command_line_input(int argc, char* argv[]) {
+static void parse_command_line_input(int argc, char* argv[]) {
 	Config* c = c->getInstance();
 	bool mapping_set{ false };
 	bool schedule_set{ false };
@@ -58,6 +58,7 @@ void parse_command_line_input(int argc, char* argv[]) {
 				"                 round_robin: Use round-robin scheduling strategy.\n"
 				"   --list_schedule    Use a list for scheduling instead of hard-coded scheduler.\n"
 				"   --bound_sched <number>      Use bound loops for local scheduling with given number of tries.\n"
+				"   --bound_sched_file <file>   Use bound loops for local scheduling for each actor instance.\n"
 				"\nOptimizations:\n"
 				"	--prune_unconnected Remove unconnected channels from actors, otherwise they are set to NULL.\n"
 				"   --opt_sched         Use optimized local scheduling.\n"
@@ -203,6 +204,9 @@ void parse_command_line_input(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "--bound_sched") == 0) {
 			c->set_bound_local_sched_loops(static_cast<unsigned int>(atoi(argv[++i])));
 		}
+		else if (strcmp(argv[i], "--bound_sched_file") == 0) {
+			c->set_bound_sched_loops_file(argv[++i]);
+		}
 		else if (strcmp(argv[i], "--omp_tasking") == 0) {
 			c->set_omp_tasking();
 		}
@@ -291,6 +295,9 @@ int main(int argc, char* argv[]) {
 
 	Config *c = c->getInstance();
 
+	/* Create target directory if it doesn't exist. */
+	std::filesystem::create_directory(c->get_target_dir());
+
 	std::cout << "Network File: " << c->get_network_file() << std::endl;
 	std::cout << "CAL Source directory: " << c->get_source_dir() << std::endl;
 	std::cout << "Target directory: " << c->get_target_dir() << std::endl;
@@ -361,9 +368,6 @@ int main(int argc, char* argv[]) {
 		std::cout << "List scheduling not supported for C ...exiting." << std::endl;
 		exit(92);
 	}
-	
-	/* Create target directory if it doesn't exist. */
-	std::filesystem::create_directory(c->get_target_dir());
 
 	IR::Dataflow_Network* dpn;
 
@@ -383,7 +387,7 @@ int main(int argc, char* argv[]) {
 	std::cout << "Edges found: " << dpn->get_edges().size() << std::endl;
 	try {
 		for (auto it = dpn->get_actors()->begin(); it != dpn->get_actors()->end(); ++it) {
-			(*it)->transform_IR();
+			(*it)->transform_IR(dpn);
 		}
 	}
 	catch (const Converter_Exception& e) {
@@ -392,6 +396,16 @@ int main(int argc, char* argv[]) {
 	}
 
 	std::cout << "IR Transformation done." << std::endl;
+
+	try {
+		Dataflow_Analysis::network_analysis(dpn);
+	}
+	catch (const Converter_Exception& e) {
+		std::cerr << e.what();
+		exit(1);
+	}
+
+	std::cout << "Dataflow Analysis done." << std::endl;
 
 	try {
 		for (auto it = dpn->get_actors()->begin(); it != dpn->get_actors()->end(); ++it) {
@@ -450,5 +464,3 @@ int main(int argc, char* argv[]) {
 
 	return 0;
 }
-
-

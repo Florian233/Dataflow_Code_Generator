@@ -2,6 +2,7 @@
 
 #include "IR/Dataflow_Network.hpp"
 #include "Exceptions.hpp"
+#include <filesystem>
 
 namespace Network_Reader {
 
@@ -12,6 +13,8 @@ namespace Network_Reader {
 	 * in the flat network representation.
 	 */
 	void read_actors(IR::Dataflow_Network* dpn);
+
+	IR::Unit* read_unit(IR::Dataflow_Network* dpn, std::filesystem::path path);
 
 	/* Exception that is thrown when during reading something fails, usually file access, e.g.
 	 * referenced files don't exist.

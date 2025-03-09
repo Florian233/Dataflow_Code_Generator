@@ -3,7 +3,7 @@
 #include "Conversion/Unsupported.hpp"
 #include "Tokenizer/Tokenizer.hpp"
 #include <tuple>
-#include "Scheduling_Lib/Scheduling_Data.hpp"
+#include "Dataflow_Analysis/Scheduling_Lib/Scheduling_Data.hpp"
 #include "ABI/abi.hpp"
 #include "Config/config.h"
 #include "common/include/String_Helper.h"
@@ -29,7 +29,7 @@ static std::string convert_list_comprehension(
 	Config* c = c->getInstance();
 	std::string output;
 	std::string var_iterator = Converter_RVC_Cpp::find_unused_name(global_map, local_map);
-	t = token_producer.get_next_Token();//drop [
+	t = token_producer.get_next_token();//drop [
 	output.append(prefix + "unsigned " + var_iterator + " = 0;\n");
 	std::string command{ "\t" + var_name + "[" + var_iterator + "++] = " };
 	//everything before the : is the body of the loop(s)
@@ -44,18 +44,18 @@ static std::string convert_list_comprehension(
 		}
 		else {
 			tmp.append(t.str);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 	}
 	if (t.str == ":") {
 		command.append(tmp + ";\n");
-		t = token_producer.get_next_Token();// drop :
+		t = token_producer.get_next_token();// drop :
 		//loop head(s)
 		std::string head{};
 		std::string tail{};
 		while (t.str != "]") {
 			if ((t.str == "for") || (t.str == "foreach")) {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				if ((t.str == "uint") || (t.str == "int") || (t.str == "String") || (t.str == "bool")
 					|| (t.str == "half") || (t.str == "float"))
 				{
@@ -63,28 +63,28 @@ static std::string convert_list_comprehension(
 					head.append(Converter_RVC_Cpp::convert_type(t, token_producer, global_map));
 					head.append(" " + t.str + " = ");
 					std::string var_name{ t.str };
-					t = token_producer.get_next_Token(); //in
-					t = token_producer.get_next_Token(); //start value
+					t = token_producer.get_next_token(); //in
+					t = token_producer.get_next_token(); //start value
 					head.append(t.str + ";");
-					t = token_producer.get_next_Token(); //..
-					t = token_producer.get_next_Token(); //end value
+					t = token_producer.get_next_token(); //..
+					t = token_producer.get_next_token(); //end value
 					head.append(var_name + " <= " + t.str + ";" + var_name + "++){\n");
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else {
 					//no type, directly variable name, indicates foreach loop
 					std::string var_name{ t.str };
-					t = token_producer.get_next_Token();//in
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();//in
+					t = token_producer.get_next_token();
 					std::string tmp;
 					if ((t.str == "[") || (t.str == "{")) {
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 						tmp.append("{");
 						while (t.str != "]") {
 							tmp.append(t.str);
 						}
 						tmp.append("}");
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 					if (c->get_target_language() == Target_Language::cpp) {
 						head.append(prefix + "for(");
@@ -104,7 +104,7 @@ static std::string convert_list_comprehension(
 				}
 				tail.append(prefix + "}\n");
 				if (t.str == ",") {//a komma indicates a further loop head, thus the next token has to be inspected
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 		}
@@ -155,9 +155,9 @@ static std::string convert_inline_if_with_list_assignment(
 	//Condition
 	while (t.str != "?") {
 		condition.append(t.str + " ");
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 	}
-	t = token_producer.get_next_Token(); // skip "?"
+	t = token_producer.get_next_token(); // skip "?"
 	//if body
 	int count{ 1 };
 	bool nested{ false };
@@ -170,19 +170,19 @@ static std::string convert_inline_if_with_list_assignment(
 			--count;
 		}
 		expression1.append(t.str + " ");
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 	}
 	expression1.erase(expression1.size() - 2, 2);//remove last :
 	if (nested) {
 		Tokenizer tok{ expression1 };
-		Token tok_token = tok.get_next_Token();
+		Token tok_token = tok.get_next_token();
 		expression1 = convert_inline_if_with_list_assignment(tok_token, tok, global_map, local_map, prefix + "\t", var_name, type);
 	}
 	else {
 		//auf listenzuweiseung prüfen, wenn ja mit convert_list_comprehension in C++ Code umwandeln
 		if (expression1[0] == '[') {
 			Tokenizer tok{ expression1 };
-			Token tok_token = tok.get_next_Token();
+			Token tok_token = tok.get_next_token();
 			expression1 = convert_list_comprehension(tok_token, tok, var_name, type, prefix + "\t", global_map, local_map);
 		}
 		else {
@@ -205,18 +205,18 @@ static std::string convert_inline_if_with_list_assignment(
 			break;
 		}
 		expression2.append(t.str + " ");
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 	}
 	if (nested) {
 		Tokenizer tok{ expression2 };
-		Token t = tok.get_next_Token();
+		Token t = tok.get_next_token();
 		expression2 = convert_inline_if_with_list_assignment(t, tok, global_map, local_map, prefix + "\t", var_name, type);
 	}
 	else {
 		//auf listenzuweiseung prüfen, wenn ja mit convert_list_comprehension in C++ Code umwandeln
 		if (expression2[0] == '[') {
 			Tokenizer tok{ expression2 };
-			Token t = tok.get_next_Token();
+			Token t = tok.get_next_token();
 			expression2 = convert_list_comprehension(t, tok, var_name, type, prefix + "\t", global_map, local_map);
 		}
 		else {
@@ -252,7 +252,7 @@ static std::string convert_action_body(
 	std::string output;
 	while ((t.str != "end") && (t.str != "endaction")) {
 		if ((t.str == "var") || (t.str == "do")) {
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		else if ((t.str == "for") || (t.str == "foreach")) {
 			output.append(Converter_RVC_Cpp::convert_for(t, token_producer,
@@ -301,10 +301,10 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 	while (t.str != "==>") {
 		std::string name{ t.str };
 		bool unused_channel = (unused_in_channels.find(name) != unused_in_channels.end());
-		t = token_producer.get_next_Token(); // :
-		t = token_producer.get_next_Token(); // [
+		t = token_producer.get_next_token(); // :
+		t = token_producer.get_next_token(); // [
 		std::vector<std::pair<std::string, bool>> consumed_element_names; // store elements first, because there can be a repeat
-		t = token_producer.get_next_Token(); //start of token name part
+		t = token_producer.get_next_token(); //start of token name part
 		while (t.str != "]") {
 			std::string expr{};
 			bool first{ true };
@@ -325,10 +325,10 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 						else {
 							expr.append(t.str);
 						}
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 					expr.append(t.str);
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 				else {
 					if (actor_data.get_replacement_map().contains(t.str)) {
@@ -337,21 +337,21 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 					else {
 						expr.append(t.str);
 					}
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			if (t.str == ",") {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			consumed_element_names.push_back(std::make_pair(expr, already_known_variable));
 		}
-		t = token_producer.get_next_Token(); // drop ]
+		t = token_producer.get_next_token(); // drop ]
 		if (t.str == "repeat") {
-			t = token_producer.get_next_Token(); //repeat count
+			t = token_producer.get_next_token(); //repeat count
 			std::string repeat_count_expression;
 			while ((t.str != ",") && (t.str != "==>")) {
 				repeat_count_expression.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			int repeat_count = Converter_RVC_Cpp::evaluate_constant_expression(repeat_count_expression,
 				actor_data.get_symbol_map(), local_map);
@@ -477,7 +477,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 			actor_data.add_scheduler_data(method_name, d);
 		}
 		if (t.str == ",") {// another fifo access, otherwise it has to be ==> and the loop terminates
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (input_channel_parameters && !unused_channel) {
 				parameters.append(",");
 			}
@@ -515,9 +515,9 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 		std::string name{ t.str };
 		bool unused_channel = (unused_out_channels.find(name) != unused_out_channels.end());
 		std::vector<std::tuple<std::string,bool>> output_fifo_expr; //bool = true indicates that define shall be added, e.g. for list comprehension
-		t = token_producer.get_next_Token(); //:
-		t = token_producer.get_next_Token(); //[
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token(); //:
+		t = token_producer.get_next_token(); //[
+		t = token_producer.get_next_token();
 		while (t.str != "]") {
 			std::string expr;
 			bool add_define{ false };
@@ -527,7 +527,7 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 				output.append(convert_list_comprehension(t, token_producer, accessor_var,
 					actor_data.get_channel_name_type_map()[name],
 					prefix, actor_data.get_symbol_map(), local_map));
-				t = token_producer.get_next_Token(); //drop last ] of the list comprehension
+				t = token_producer.get_next_token(); //drop last ] of the list comprehension
 				expr = accessor_var;
 				add_define = true;
 			}
@@ -536,24 +536,24 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 					if (t.str == "[") {
 						while (t.str != "]") {
 							expr.append(t.str);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 						expr.append(t.str);
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 					else if (t.str == "(") {
 						while (t.str != ")") {
 							expr.append(t.str);
-							t = token_producer.get_next_Token();
+							t = token_producer.get_next_token();
 						}
 						expr.append(t.str);
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 					else if (t.str == "if") {
 						auto tmp = Converter_RVC_Cpp::convert_inline_if(t, token_producer);
 						if (tmp.second) {
 							Tokenizer tok{ tmp.first };
-							Token tok_token = tok.get_next_Token();
+							Token tok_token = tok.get_next_token();
 							output.append(convert_inline_if_with_list_assignment(tok_token, tok,
 								actor_data.get_symbol_map(), local_map, prefix, accessor_var,
 								actor_data.get_channel_name_type_map()[name]));
@@ -566,27 +566,27 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 					}
 					else {
 						expr.append(t.str);
-						t = token_producer.get_next_Token();
+						t = token_producer.get_next_token();
 					}
 				}
 				//output.append(prefix + accessor_var + " =" + expr + ";\n");
 			}
 			if (t.str == ",") {
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 				++accessor_counter;
 			}
 			output_fifo_expr.push_back(std::make_tuple(expr, add_define));
 		}
 
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		if (t.str == "repeat") {
-			t = token_producer.get_next_Token();//contains repeat count
+			t = token_producer.get_next_token();//contains repeat count
 			std::string repeat_count_expression;
 			while ((t.str != ",") && (t.str != "do") && (t.str != "var") && (t.str != "end")
 				&& (t.str != "endaction") && (t.str != "guard"))
 			{
 				repeat_count_expression.append(t.str + " ");
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 
 			int repeat_count = Converter_RVC_Cpp::evaluate_constant_expression(repeat_count_expression,
@@ -689,7 +689,7 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 			actor_data.add_scheduler_data(method_name, d);
 		}
 		if (t.str == ",") {// another fifo access, otherwise it has to be var or do  and the loop terminates
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			if (output_channel_parameters && !unused_channel) {
 				parameters.append(",");
 			}
@@ -723,7 +723,7 @@ std::string convert_action(
 	std::string output{ prefix };
 	std::string end_of_output;
 	std::string middle_of_output;
-	Token t = token_producer->get_next_Token();
+	Token t = token_producer->get_next_token();
 	std::string method_name;
 	Config* c = c->getInstance();
 	bool is_init = false;
@@ -739,9 +739,9 @@ std::string convert_action(
 		std::string action_name{ "" };
 
 		action_tag = t.str;
-		t = token_producer->get_next_Token(); // : or .
+		t = token_producer->get_next_token(); // : or .
 		if (t.str == ".") {
-			t = token_producer->get_next_Token();
+			t = token_producer->get_next_token();
 			while (t.str != ":") {
 				if (t.str == ".") {//dots cannot be used in c++ 
 					action_name.append("_");
@@ -749,10 +749,10 @@ std::string convert_action(
 				else {
 					action_name.append(t.str);
 				}
-				t = token_producer->get_next_Token();
+				t = token_producer->get_next_token();
 			}
 		}
-		t = token_producer->get_next_Token(); // action
+		t = token_producer->get_next_token(); // action
 		if (t.str == "initialize") {// init action can have a name, dont know why
 			is_init = true;
 		}
@@ -805,7 +805,7 @@ std::string convert_action(
 		output.append(") { \n");
 	}
 	//convert fifo access
-	t = token_producer->get_next_Token();//start of the fifo part - fifo name
+	t = token_producer->get_next_token();//start of the fifo part - fifo name
 
 	while (t.str != "==>") {
 		//input fifos
@@ -822,7 +822,7 @@ std::string convert_action(
 		}
 	}
 
-	t = token_producer->get_next_Token(); //get next token, that should contain first output fifo name, if any are accessed
+	t = token_producer->get_next_token(); //get next token, that should contain first output fifo name, if any are accessed
 	while ((t.str != "do") && (t.str != "guard") && (t.str != "var") && (t.str != "end")
 		&& (t.str != "endaction"))
 	{
@@ -855,9 +855,9 @@ std::string convert_action(
 	//read guards
 	if (t.str == "guard") {
 		std::string guard;
-		t = token_producer->get_next_Token();
+		t = token_producer->get_next_token();
 		while ((t.str != "var") && (t.str != "do") && (t.str != "end") && (t.str != "endaction")) {
-			t = token_producer->get_next_Token();
+			t = token_producer->get_next_token();
 		}
 	}
 

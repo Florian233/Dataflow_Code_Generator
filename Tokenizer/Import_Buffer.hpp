@@ -9,9 +9,9 @@ class Import_Buffer : public Buffer {
 
 	void buffer_import(Token& t, Tokenizer& token_producer) {
 		if ((t.str == "package") || (t.str == "import")) {
-			while (t.str != "actor") {
+			while ((t.str != "actor") && (t.str != "unit")) {
 				tokens.push_back(t);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 	}

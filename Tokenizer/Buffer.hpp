@@ -16,19 +16,19 @@ protected:
 
 	void buffer_string(Token& t, Tokenizer& token_producer) {
 		tokens.push_back(t);
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		while (t.str != "\"") {
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		tokens.push_back(t);
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 	}
 
 	void buffer_bracket(Token& t, Tokenizer& token_producer) {
 		if (t.str == "[") {
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while (t.str != "]") {
 				if ((t.str == "[") || (t.str == "(")) {
 					buffer_bracket(t, token_producer);
@@ -41,15 +41,15 @@ protected:
 				}
 				else {
 					tokens.push_back(t);
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 		else if (t.str == "(") {
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 			while (t.str != ")") {
 				if ((t.str == "[") || (t.str == "(")) {
 					buffer_bracket(t, token_producer);
@@ -62,11 +62,11 @@ protected:
 				}
 				else {
 					tokens.push_back(t);
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 	}
 
@@ -75,7 +75,7 @@ protected:
 	 */
 	void buffer_scope(Token& t, Tokenizer& token_producer, std::string end_token) {
 		tokens.push_back(t);
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 		while ((t.str != "end") && (t.str != end_token)) {
 			if (t.str == "if") {
 				buffer_scope(t, token_producer, "endif");
@@ -101,17 +101,17 @@ protected:
 			}
 			else {
 				tokens.push_back(t);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 		// push the end token
 		tokens.push_back(t);
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 	}
 
 public:
 
-	Token get_next_Token() {
+	Token get_next_token() {
 		if (index >= tokens.size()) {
 			return Token{ "" };
 		}

@@ -39,9 +39,10 @@ static IR::Actor_Instance* check_instance_and_create(
 	std::string id,
 	std::string cal_class)
 {
+	static unsigned instance_count = 0;
 	if (instance_map.count(id) == 0) {
 		// Instance has not been created yet, create and assign.
-		IR::Actor_Instance* ret = new IR::Actor_Instance(id, actor_map[cal_class]);
+		IR::Actor_Instance* ret = new IR::Actor_Instance(id, actor_map[cal_class], instance_count++);
 #ifdef DEBUG_READER_ACTORS
 		std::cout << "Creating actor instance " << id <<", referring to actor " << cal_class << std::endl;
 #endif

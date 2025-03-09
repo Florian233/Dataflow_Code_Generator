@@ -57,6 +57,7 @@ class Config {
     bool rr_scheduling{ false };
     unsigned local_sched_loops{ 0 };
     bool limit_local_sched_loops{ false };
+    std::string loop_bound_file;
 
     //OpenMP
     bool omp_tasking{ false };
@@ -213,6 +214,14 @@ public:
     }
     unsigned get_local_sched_loop_num(void) {
         return local_sched_loops;
+    }
+
+    void set_bound_sched_loops_file(std::string s) {
+        loop_bound_file = s;
+        limit_local_sched_loops = true;
+    }
+    std::string get_bound_sched_loops_file(void) {
+        return loop_bound_file;
     }
 
     void set_prune_disconnected(void) {

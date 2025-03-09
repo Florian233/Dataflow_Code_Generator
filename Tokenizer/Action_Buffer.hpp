@@ -20,7 +20,7 @@ class Action_Buffer: public Buffer {
 			}
 			else {
 				tokens.push_back(t);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 		// read rest
@@ -32,7 +32,7 @@ class Action_Buffer: public Buffer {
 		else {
 			// must be some kind of end token
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 	}
 

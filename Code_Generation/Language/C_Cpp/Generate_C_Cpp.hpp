@@ -46,7 +46,8 @@ namespace Code_Generation_C_Cpp {
 		Optimization::Optimization_Data_Phase1* opt_data1,
 		Optimization::Optimization_Data_Phase2* opt_data2,
 		Mapping::Mapping_Data* map_data,
-		std::string channel_include);
+		std::string channel_include,
+		unsigned scheduling_loop_bound);
 
 	/* Generate the code for a composit actor - future work. */
 	std::pair<Header, Source> generate_composit_actor_code(
@@ -54,5 +55,6 @@ namespace Code_Generation_C_Cpp {
 		Optimization::Optimization_Data_Phase1* opt_data1,
 		Optimization::Optimization_Data_Phase2* opt_data2,
 		Mapping::Mapping_Data* map_data,
-		std::string channel_include);
+		std::string channel_include,
+		unsigned scheduling_loop_bound);
 };

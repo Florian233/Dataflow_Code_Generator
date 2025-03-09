@@ -82,7 +82,7 @@ public:
 		Function returns the next token.
 		If all tokens have been read this function just returns a token with an empty string. This is the only case when an empty string can be returned.
 	*/
-	virtual Token get_next_Token() {
+	virtual Token get_next_token() {
 		//first set the index to the next relevant character
 		find_next_valid_character();
 

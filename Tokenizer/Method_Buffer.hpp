@@ -22,7 +22,7 @@ class Method_Buffer : public Buffer {
 				}
 				else {
 					tokens.push_back(t);
-					t = token_producer.get_next_Token();
+					t = token_producer.get_next_token();
 				}
 			}
 			// read rest
@@ -32,7 +32,7 @@ class Method_Buffer : public Buffer {
 			else {
 				// push end token
 				tokens.push_back(t);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 		else if (t.str == "function") {

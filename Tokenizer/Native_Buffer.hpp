@@ -12,10 +12,10 @@ class Native_Buffer : public Buffer {
 			//read action head - FIXME: Do we have to consider endprocedure or endfunction here?
 			while (t.str != "end") {
 				tokens.push_back(t);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 			tokens.push_back(t);
-			t = token_producer.get_next_Token();
+			t = token_producer.get_next_token();
 		}
 	}
 

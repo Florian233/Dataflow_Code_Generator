@@ -21,11 +21,11 @@ class Var_Buffer : public Buffer {
 					is_const_assignment = true;
 				}
 				tokens.push_back(t);
-				t = token_producer.get_next_Token();
+				t = token_producer.get_next_token();
 			}
 		}
 		tokens.push_back(t);
-		t = token_producer.get_next_Token();
+		t = token_producer.get_next_token();
 	}
 
 public:

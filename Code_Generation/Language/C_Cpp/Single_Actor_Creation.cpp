@@ -31,7 +31,7 @@ static std::pair<std::string, std::string> class_variable_generation(
 		it != actor->get_actor()->get_var_buffers().end(); ++it)
 	{
 		it->reset_buffer();
-		Token t = it->get_next_Token();
+		Token t = it->get_next_token();
 		std::string symbol_name;
 		bool const_def = false;
 		std::string tmp = Converter_RVC_Cpp::convert_expression(t, *it, data.get_symbol_map(), data.get_symbol_type_map(), symbol_name, prefix);
@@ -72,7 +72,7 @@ static std::pair<std::string, std::string> class_variable_generation(
 		it != actor->get_actor()->get_param_buffers().end(); ++it)
 	{
 		it->reset_buffer();
-		Token t = it->get_next_Token();
+		Token t = it->get_next_token();
 		parameters += Converter_RVC_Cpp::convert_actor_parameters(t, *it, actor->get_conversion_data().get_symbol_map(),
 			constructor_parameter_name_type_map, data.get_default_parameter_map(), prefix);
 	}
@@ -217,7 +217,7 @@ static std::string function_generation(
 	{
 		std::map<std::string, std::string> local_type_map{ data.get_symbol_type_map() };
 		it->reset_buffer();
-		Token t = it->get_next_Token();
+		Token t = it->get_next_token();
 		if (t.str == "function") {
 			ret += Converter_RVC_Cpp::convert_function(t, *it, data.get_symbol_map(), local_type_map, prefix);
 		}
@@ -237,7 +237,7 @@ static std::string convert_natives(IR::Actor* actor)
 		it != actor->get_native_buffers().end(); ++it)
 	{
 		it->reset_buffer();
-		Token t = it->get_next_Token();
+		Token t = it->get_next_token();
 		ret += Converter_RVC_Cpp::convert_native_declaration(t, (*it), "*",
 			actor->get_conversion_data(), actor->get_conversion_data().get_symbol_map());
 	}
@@ -318,6 +318,85 @@ static std::string generate_FSM(
 	return ret;
 }
 
+static void convert_import(
+	IR::Actor_Instance* inst)
+{
+	Actor_Conversion_Data& d = inst->get_conversion_data();
+
+	for (auto it = inst->get_actor()->get_imported_symbols().begin();
+		it != inst->get_actor()->get_imported_symbols().end(); ++it)
+	{
+		bool found_symbol{ false };
+		std::string code, declarations;
+		if (it->first == "*") {
+			// looking for nothing specific...everything is fine
+			found_symbol = true;
+		}
+
+		for (auto v = it->second->get_var_buffers().begin(); v != it->second->get_var_buffers().end(); ++v)
+		{
+			v->reset_buffer();
+			Token t = v->get_next_token();
+			if ((t.str == "uint") || (t.str == "int")
+				|| (t.str == "String") || (t.str == "bool")
+				|| (t.str == "half") || (t.str == "float"))
+			{
+				code += Converter_RVC_Cpp::convert_expression(t, *v, d.get_symbol_map(), d.get_symbol_type_map(), it->first, "\t");
+			}
+			else if (t.str == "List") {
+				code += Converter_RVC_Cpp::convert_list(t, *v, d.get_symbol_map(), d.get_symbol_map(), d.get_symbol_type_map(), it->first, "\t");
+			}
+			else if (t.str == "") {
+				throw Wrong_Token_Exception{ "Unexpected End of File." };
+			}
+			else {
+				throw Wrong_Token_Exception{ "Unexpected token during processing of Unit file." };
+			}
+
+		}
+		for (auto m = it->second->get_method_buffers().begin(); m != it->second->get_method_buffers().end(); ++m)
+		{
+			m->reset_buffer();
+			Token t = m->get_next_token();
+			if (t.str == "function") {
+				std::string tmp{ Converter_RVC_Cpp::convert_function(t, *m, d.get_symbol_map(), d.get_symbol_type_map(), "\t", it->first) };
+				code += tmp;
+				//find declaration and insert it at the beginning of the source string, to avoid linker errors
+				//std::string dekl = tmp.substr(0, tmp.find("{")) + ";\n";
+				//declarations.insert(0, dekl);
+			}
+			else if (t.str == "procedure") {
+				std::string tmp{ Converter_RVC_Cpp::convert_procedure(t, *m, d.get_symbol_map(), d.get_symbol_type_map(), "\t", it->first)};
+				code += tmp;
+				//find declaration and insert it at the beginning of the source string, to avoid linker errors
+				//std::string dekl = tmp.substr(0, tmp.find("{")) + ";\n";
+				//declarations.insert(0, dekl);
+			}
+			else if (t.str == "") {
+				throw Wrong_Token_Exception{ "Unexpected End of File." };
+			}
+			else {
+				throw Wrong_Token_Exception{ "Unexpected token during processing of Unit file." };
+			}
+		}
+		for (auto n = it->second->get_native_buffers().begin(); n != it->second->get_native_buffers().end(); ++n)
+		{
+			n->reset_buffer();
+			Token t = n->get_next_token();
+			declarations += Converter_RVC_Cpp::convert_native_declaration(t, *n, it->first, d);
+		}
+
+		if (d.get_symbol_map().contains(it->first)) {
+			found_symbol = true;
+		}
+		if (!found_symbol) {
+			throw Code_Generation::Code_Generation_Exception{ "Didn't find symbol " + it->first + " in import." };
+		}
+		d.add_var_code(code);
+		d.add_declarations(declarations);
+	}
+}
+
 std::pair<Code_Generation_C_Cpp::Header, Code_Generation_C_Cpp::Source>
 Code_Generation_C_Cpp::generate_actor_code(
 	IR::Actor_Instance* instance,
@@ -328,7 +407,8 @@ Code_Generation_C_Cpp::generate_actor_code(
 	Optimization::Optimization_Data_Phase1* opt_data1,
 	Optimization::Optimization_Data_Phase2* opt_data2,
 	Mapping::Mapping_Data* map_data,
-	std::string channel_include)
+	std::string channel_include,
+	unsigned scheduling_loop_bound)
 {
 	IR::Actor* actor = instance->get_actor();
 	std::string header_name, source_name;
@@ -342,6 +422,8 @@ Code_Generation_C_Cpp::generate_actor_code(
 	std::map<std::string, std::string> constructor_parameter_name_type_map;
 
 	Actor_Conversion_Data& d = instance->get_conversion_data();
+
+	convert_import(instance);
 
 	std::map<std::string, std::string> guard_map;
 
@@ -384,7 +466,8 @@ Code_Generation_C_Cpp::generate_actor_code(
 			actor->get_output_classification(),
 			"\t",
 			"schedule",
-			"void"
+			"void",
+			scheduling_loop_bound
 		));
 		header_code.append(init_action_generation(actor, d, "\t"));
 		header_code.append("};");
@@ -403,10 +486,8 @@ Code_Generation_C_Cpp::generate_actor_code(
 		header_code.append("#define " + include_guard + "_H\n\n");
 		header_code.append(channel_include);
 		header_code.append("\n");
-		if (!instance->get_actor()->get_fsm().empty()) {
-			header_code.append("typedef enum " + class_name + "_fsm " + class_name + "_fsm_t;\n");
-			header_code.append("\n");
-		}
+		header_code.append(generate_FSM(actor, unused_actions, class_name, ""));
+		header_code.append("\n");
 		header_code.append("typedef struct " + class_name + " {\n");
 		auto tmp = class_variable_generation(instance, opt_data1, opt_data2, map_data,
 			constructor_parameter_name_type_map, unused_in_channels, unused_out_channels, d, "\t");
@@ -436,8 +517,6 @@ Code_Generation_C_Cpp::generate_actor_code(
 		replace_all_substrings(q, "\t", "");
 		source_code.append(q);
 		source_code.append("\n");
-		source_code.append(generate_FSM(actor, unused_actions, class_name, ""));
-		source_code.append("\n");
 		source_code.append(convert_natives(actor));
 		source_code.append("\n");
 		replace_all_substrings(tmp.second, "\t", "");
@@ -460,7 +539,8 @@ Code_Generation_C_Cpp::generate_actor_code(
 			actor->get_output_classification(),
 			"",
 			class_name + "_schedule",
-			class_name+"_t* _g"
+			class_name+"_t* _g",
+			scheduling_loop_bound
 		));
 		source_code.append("\n");
 		std::string i = init_action_generation(actor, d, "");

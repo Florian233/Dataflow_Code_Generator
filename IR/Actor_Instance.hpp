@@ -45,15 +45,31 @@ namespace IR {
 		bool use_instance_data{ false };
 		Actor_Conversion_Data conversion_data;
 
+		bool critical_path = false;
+		unsigned parallel_path_id = 0;
+
+		std::set<IR::Actor_Instance*> predecessors;
+
+		bool fork{ false };
+		bool join{ false };
+
+		unsigned id;
+
+		unsigned sched_loop_bound = 0;
+
 	public:
 
-		Actor_Instance(std::string name) : name(name) {
+		Actor_Instance(std::string name, unsigned _id) : name(name), id(_id) {
 			actor = nullptr;
 			composit = nullptr;
 		}
 
-		Actor_Instance(std::string name, IR::Actor* a) : name(name), actor(a) {
+		Actor_Instance(std::string name, IR::Actor* a, unsigned _id) : name(name), actor(a), id(_id) {
 			composit = nullptr;
+		}
+
+		unsigned get_id(void) {
+			return id;
 		}
 
 		void set_actor(IR::Actor* a) {
@@ -170,6 +186,48 @@ namespace IR {
 			}
 		}
 
+		void set_critical_path(bool b) {
+			critical_path = b;
+		}
+		bool get_critical_path(void) {
+			return critical_path;
+		}
+
+		void set_parallel_path_id(unsigned i) {
+			parallel_path_id = i;
+		}
+		unsigned get_parallel_path_id(void) {
+			return parallel_path_id;
+		}
+
+		void add_predecessor(IR::Actor_Instance* inst) {
+			predecessors.insert(inst);
+		}
+
+		bool is_predecessor(IR::Actor_Instance* inst) {
+			return predecessors.contains(inst);
+		}
+
+		std::set<IR::Actor_Instance*>& get_predecessors(void) {
+			return predecessors;
+		}
+
+		bool is_fork(void) {
+			return fork;
+		}
+
+		bool is_join(void) {
+			return join ;
+		}
+
+		void set_fork(void) {
+			fork = true;
+		}
+
+		void set_join(void) {
+			join = true;
+		}
+
 		void update_conversion_data(void) {
 			conversion_data = actor->get_conversion_data();
 			use_instance_data = true;
@@ -181,6 +239,13 @@ namespace IR {
 
 		void set_sched_order(int s) {
 			sched_order = s;
+		}
+
+		void set_sched_loop_bound(unsigned b) {
+			sched_loop_bound = b;
+		}
+		unsigned get_sched_loop_bound(void) {
+			return sched_loop_bound;
 		}
 	};
 };

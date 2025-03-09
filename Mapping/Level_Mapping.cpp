@@ -609,12 +609,7 @@ void Mapping::generate_level_based_mapping(
 		weight_sum = Mapping::compute_actor_weights(dpn, c->get_mapping_weights(), actor_weight_map);
 	}
 
-	if (c->get_use_outputs_from_file()) {
-		Mapping::read_output_nodes(dpn, c->get_output_nodes_file(), output_nodes);
-	}
-	else {
-		Mapping::detect_output_nodes(dpn, output_nodes);
-	}
+	output_nodes.insert(dpn->get_outputs().begin(), dpn->get_outputs().end());
 
 	max_level_lft = Mapping::compute_levels_alap(dpn, c->get_mapping_weights(), actor_weight_map, output_nodes, actor_level_map_lft);
 

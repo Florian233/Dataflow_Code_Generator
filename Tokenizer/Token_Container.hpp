@@ -31,5 +31,5 @@ struct Token {
 
 class Token_Container {
 public:
-	virtual Token get_next_Token() = 0;
+	virtual Token get_next_token() = 0;
 };

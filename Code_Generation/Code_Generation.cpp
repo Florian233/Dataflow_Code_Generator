@@ -1,8 +1,11 @@
 #include "Code_Generation.hpp"
 #include "Config/config.h"
 #include <set>
+#include <sstream> 
+#include <fstream>
 #include <filesystem>
 #include "Language/C_Cpp/Generate_C_Cpp.hpp"
+#include "rapidxml-1.13/rapidxml.hpp"
 
 /* Differences of the actor instance from the base actor.
  * Differences might stem from unconnected ports or DCE.
@@ -14,15 +17,17 @@ public:
 	std::set<std::string> unused_out_channels;
 	std::string name;
 	IR::Actor_Instance* actor;
+	unsigned scheduling_loop_bound;
 
 	Actor_Diff_Data(
 		std::set<std::string>& a,
 		std::set<std::string>& in,
 		std::set<std::string>& out,
 		std::string n,
-		IR::Actor_Instance *ai) :
+		IR::Actor_Instance *ai,
+		unsigned bound) :
 		unused_actions{ a }, unused_in_channels{ in }, unused_out_channels{ out },
-		name{ n }, actor{ ai }
+		name{ n }, actor{ ai }, scheduling_loop_bound{bound}
 	{};
 
 };
@@ -69,6 +74,69 @@ static std::set<std::string> get_unconnected_ports(IR::Actor_Instance *instance,
 	return result;
 }
 
+static void read_scheduling_loop_bounds(
+	IR::Dataflow_Network* dpn)
+{
+	Config* c = c->getInstance();
+
+	for (auto a = dpn->get_actor_instances().begin(); a != dpn->get_actor_instances().end(); ++a) {
+		(*a)->set_sched_loop_bound(c->get_local_sched_loop_num());
+	}
+
+	if (c->get_bound_sched_loops_file().empty()) {
+		return;
+	}
+
+	rapidxml::xml_document<char>* doc = new rapidxml::xml_document<char>;
+
+	std::ifstream network_file(c->get_bound_sched_loops_file(), std::ifstream::in);
+	if (network_file.fail()) {
+		throw Converter_Exception{ "Cannot open the file " + c->get_bound_sched_loops_file()};
+	}
+	std::stringstream sched_loop_buffer;
+	sched_loop_buffer << network_file.rdbuf();
+	std::string str_to_parse = sched_loop_buffer.str();
+	char* buffer = new char[str_to_parse.size() + 1];
+	std::size_t length = str_to_parse.copy(buffer, str_to_parse.size() + 1);
+	buffer[length] = '\0';
+	doc->parse<0>(buffer);
+
+	if (strcmp(doc->first_node()->name(), "Loopbound") != 0) {
+		// something is wrong here, root node should be mapping ... bail out
+		throw Converter_Exception{ "Content of Loop Bound file erroneous." };
+	}
+
+	for (const rapidxml::xml_node<>* sub_node = doc->first_node()->first_node();
+		sub_node; sub_node = sub_node->next_sibling())
+	{
+		if (strcmp(sub_node->name(), "Bound") == 0) {
+			std::string inst;
+			std::string bound;
+			for (auto attributes = sub_node->first_attribute();
+				attributes; attributes = attributes->next_attribute())
+			{
+				if (strcmp(attributes->name(), "name") == 0) {
+					inst = attributes->value();
+				}
+				else if (strcmp(attributes->name(), "value") == 0) {
+					bound = attributes->value();
+				}
+				else {
+					throw Converter_Exception{ "Content of Loopbound file erroneous." };
+				}
+			}
+			IR::Actor_Instance* i = dpn->get_actor_instance(inst);
+			if (i == nullptr) {
+				throw Converter_Exception{ "Content of Loopbound file erroneous, actor instance "+ inst +" doesn't exit." };
+			}
+			i->set_sched_loop_bound(std::stoul(bound));
+		}
+		else {
+			throw Converter_Exception{ "Content of Loopbound file erroneous." };
+		}
+	}
+}
+
 void Code_Generation::generate_code(
 	IR::Dataflow_Network* dpn,
 	Optimization::Optimization_Data_Phase1* opt_data1,
@@ -80,6 +148,10 @@ void Code_Generation::generate_code(
 	std::vector<std::string> includes;
 	std::string channel_include;
 
+	if (c->get_bound_local_sched_loops()) {
+		read_scheduling_loop_bounds(dpn);
+	}
+
 	if ((c->get_target_language() == Target_Language::c)
 		|| (c->get_target_language() == Target_Language::cpp))
 	{
@@ -90,16 +162,15 @@ void Code_Generation::generate_code(
 		if (!tmp.second.empty()) {
 			sources.push_back(tmp.second);
 		}
-	}
 
-
-	auto y = Code_Generation_C_Cpp::generate_channel_code(opt_data1, opt_data2, map_data);
-	if (!y.first.empty()) {
-		includes.push_back(y.first);
-		channel_include = "#include\"" + y.first + "\"\n";
-	}
-	if (!y.second.empty()) {
-		sources.push_back(y.second);
+		auto y = Code_Generation_C_Cpp::generate_channel_code(opt_data1, opt_data2, map_data);
+		if (!y.first.empty()) {
+			includes.push_back(y.first);
+			channel_include = "#include\"" + y.first + "\"\n";
+		}
+		if (!y.second.empty()) {
+			sources.push_back(y.second);
+		}
 	}
 
 	/*
@@ -197,21 +268,22 @@ void Code_Generation::generate_code(
 				for (auto known_it = actor_variants_map[name].begin();
 					known_it != actor_variants_map[name].end(); ++known_it)
 				{
-					if (known_it->unused_actions == unused_actions
-						&& known_it->unused_in_channels == unused_in_channels
-						&& known_it->unused_out_channels == unused_out_channels)
+					if (std::equal(unused_actions.begin(), unused_actions.end(), known_it->unused_actions.begin())
+						&& std::equal(unused_in_channels.begin(), unused_in_channels.end(), known_it->unused_in_channels.begin())
+						&& std::equal(unused_out_channels.begin(), unused_out_channels.end(), known_it->unused_out_channels.begin())
+						&& known_it->scheduling_loop_bound == (*it)->get_sched_loop_bound())
 					{
 						found = true;
 					}
 				}
 
 				if (!found) {
-					auto tmp = Actor_Diff_Data(unused_actions, unused_in_channels, unused_out_channels, name, *it);
+					auto tmp = Actor_Diff_Data(unused_actions, unused_in_channels, unused_out_channels, name, *it, (*it)->get_sched_loop_bound());
 					actor_variants_map[name].push_back(tmp);
 				}
 			}
 			else {
-				auto tmp = Actor_Diff_Data(unused_actions, unused_in_channels, unused_out_channels, name, *it);
+				auto tmp = Actor_Diff_Data(unused_actions, unused_in_channels, unused_out_channels, name, *it, (*it)->get_sched_loop_bound());
 				std::vector<Actor_Diff_Data> v;
 				v.push_back(tmp);
 				actor_variants_map.insert({name, v});
@@ -255,7 +327,7 @@ void Code_Generation::generate_code(
 		for (auto variant = it->second.begin(); variant != it->second.end(); ++variant) {
 			variant->actor->get_conversion_data().set_class_name(variant->name);
 			auto i = Code_Generation_C_Cpp::generate_actor_code(variant->actor, variant->name, variant->unused_actions,
-				variant->unused_in_channels, variant->unused_out_channels, opt_data1, opt_data2, map_data, channel_include);
+				variant->unused_in_channels, variant->unused_out_channels, opt_data1, opt_data2, map_data, channel_include, variant->scheduling_loop_bound);
 			if (!i.first.empty()) {
 				includes.push_back(i.first);
 			}
@@ -268,7 +340,7 @@ void Code_Generation::generate_code(
 	for (auto it = dpn->get_composit_actors().begin();
 		it != dpn->get_composit_actors().end(); ++it)
 	{
-		auto i = Code_Generation_C_Cpp::generate_composit_actor_code(*it, opt_data1, opt_data2, map_data, channel_include);
+		auto i = Code_Generation_C_Cpp::generate_composit_actor_code(*it, opt_data1, opt_data2, map_data, channel_include, (*it)->get_sched_loop_bound());
 		if (!i.first.empty()) {
 			includes.push_back(i.first);
 		}

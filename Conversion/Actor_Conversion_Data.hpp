@@ -4,7 +4,7 @@
 #include <vector>
 #include <map>
 #include "IR/Action.hpp"
-#include "Scheduling_Lib/Scheduling_Data.hpp"
+#include "Dataflow_Analysis/Scheduling_Lib/Scheduling_Data.hpp"
 
 /* Object to store data that is relevant during and for the conversion of an actor and its instances.
  * Under certain conditions actor instances might also be linked to a valid conversion data object!

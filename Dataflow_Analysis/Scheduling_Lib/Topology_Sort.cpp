@@ -15,6 +15,7 @@ static void find_starting_point(
 	std::vector<IR::Actor_Instance*>& process_list,
 	std::set<IR::Actor_Instance*>& unprocessed_list)
 {
+
 	// This would be sufficient if the networks always have nodes with only outgoing edges that are
 	// the predecessors of all others, but it there are cycles and so on this is not always given.
 	// Hence, we need this unprocessed list to keep track whether some nodes are not covered.
@@ -54,7 +55,15 @@ void Scheduling::topology_sort(
 	std::vector<IR::Actor_Instance*> process_list;
 	std::set<IR::Actor_Instance*> unprocessed_list; // This list excludes process_list!
 	unprocessed_list.insert(dpn->get_actor_instances().begin(), dpn->get_actor_instances().end());
-	find_starting_point(dpn->get_actor_instances(), process_list, unprocessed_list);
+	if (dpn->get_inputs().empty()) {
+		find_starting_point(dpn->get_actor_instances(), process_list, unprocessed_list);
+	}
+	else {
+		for (auto t = dpn->get_inputs().begin(); t != dpn->get_inputs().end(); ++t) {
+			unprocessed_list.erase(*t);
+			process_list.push_back(*t);
+		}
+	}
 
 	while (!process_list.empty()) {
 		IR::Actor_Instance* actor = *process_list.begin();
@@ -84,6 +93,11 @@ void Scheduling::topology_sort(
 		for (auto it = actor->get_out_edges().begin();
 			it != actor->get_out_edges().end(); ++it)
 		{
+			if ((*it)->get_feedback()) {
+				/* ignore feedback loops here */
+				continue;
+			}
+
 			IR::Actor_Instance* a = (*it)->get_sink();
 
 			if (all_predecessors_covered(a, sorted_actors) || process_list.empty()) {

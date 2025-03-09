@@ -40,17 +40,6 @@ namespace Mapping {
 		std::set<IR::Actor_Instance*>& output_nodes,
 		std::map<IR::Actor_Instance*, unsigned>& actor_level_map);
 
-	/* Find the end/output nodes of the network, only works if they are not part of a cycle. */
-	void detect_output_nodes(
-		IR::Dataflow_Network* dpn,
-		std::set<IR::Actor_Instance*>& output_nodes);
-
-	/* read output nodes from a XML file. */
-	void read_output_nodes(
-		IR::Dataflow_Network* dpn,
-		std::string path,
-		std::set<IR::Actor_Instance*>& output_nodes);
-
 	/* The function assignes to each instance the level that is used for mapping.
 	 * The level is assigned by walking from the input nodes and assigning
 	 * to each node the longest distance to an input node.
@@ -63,17 +52,6 @@ namespace Mapping {
 		std::map<IR::Actor_Instance*, unsigned>& actor_weight_map,
 		std::set<IR::Actor_Instance*>& input_nodes,
 		std::map<IR::Actor_Instance*, unsigned>& actor_level_map);
-
-	/* Find the start/input nodes of the network, only works if they are not part of a cycle. */
-	void detect_input_nodes(
-		IR::Dataflow_Network* dpn,
-		std::set<IR::Actor_Instance*>& input_nodes);
-
-	/* read input nodes from a XML file. */
-	void read_input_nodes(
-		IR::Dataflow_Network* dpn,
-		std::string path,
-		std::set<IR::Actor_Instance*>& input_nodes);
 
 	/* Find the critical path through the network and mark the corresponding actors. */
 	unsigned compute_critical_path(

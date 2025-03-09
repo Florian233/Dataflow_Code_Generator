@@ -1,12 +1,12 @@
 #pragma once
 
 //Set by preprocessor define
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_NETWORK_READ
 #define DEBUG_IR_TRANSFORMATION
-#define DEBUG_CLASSIFICATION
+#define DEBUG_DATAFLOW_ANALYSIS
 #define DEBUG_OPTIMIZATION
 #define DEBUG_MAPPING
 #define DEBUG_CODE_GENERATION
@@ -15,6 +15,10 @@
 #ifdef DEBUG_NETWORK_READ
 #define DEBUG_READER_PRINT_EDGES
 #define DEBUG_READER_ACTORS
+#endif
+
+#ifdef DEBUG_DATAFLOW_ANALYSIS
+#define DEBUG_CLASSIFICATION
 #endif
 
 #ifdef DEBUG_OPTIMIZATION

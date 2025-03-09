@@ -6,7 +6,8 @@ Code_Generation_C_Cpp::generate_composit_actor_code(
 	Optimization::Optimization_Data_Phase1* opt_data1,
 	Optimization::Optimization_Data_Phase2* opt_data2,
 	Mapping::Mapping_Data* map_data,
-	std::string channel_include)
+	std::string channel_include,
+	unsigned scheduling_loop_bound)
 {
 
 	/* Intentionally left empty, for future use. */
