@@ -172,7 +172,7 @@ The code generator provides the following command line options:
   * round_robin: Use round-robin scheduling. Actor instances can only fire one action, then they return to the global scheduler.
 * --list_schedule : Use a list for scheduling instead of hard-coded order of local scheduler calls in the code. This produces more flexible code, but has no specific purpose.
 * --bound_sched \<number\>: Execute the local scheduler a bounded number of times at maximum before returning.
-* __bound_sched_file \<file\>: Scheduling loop bounds for specific actors in the network, not specified actors fall back to default.
+* --bound_sched_file \<file\>: Scheduling loop bounds for specific actors in the network, not specified actors fall back to default.
 								<?xml version="1.0" encoding="UTF-8"?>
 								<Loopbound>
 								<Bound name="example_inst" value ="13"/>
