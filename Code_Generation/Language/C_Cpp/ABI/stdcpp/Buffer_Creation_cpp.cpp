@@ -9,7 +9,7 @@
 /* Generate the file Channel.hpp containing the Channel base class, the data channel derived class
  * and if required the control channel derived class that is not carring data explicitly.
  */
-std::string data_channel =
+static std::string data_channel =
 	"#pragma once\n\n"
     "#include <cstdlib>\n\n"
     "template<typename T>\n"
@@ -174,68 +174,11 @@ std::string data_channel =
     "        this->full = true; \n"
     "    }\n"
     "}";
-    
-std::string control_channel =
-        "template<typename T>\n"
-        "class Control_Channel : public Channel<T> {\n"
-        "public:\n"
-        "\n"
-        "    T read(void);\n"
-        "\n"
-        "    void write(T t);\n"
-        "\n"
-        "    T preview(size_t offset);\n"
-        "\n"
-        "    void notify_read(size_t elements);\n"
-        "\n"
-        "    void notify_write(size_t elements);\n"
-        "};\n\n"
-        "template<typename T>\n"
-        "T Control_Channel<T>::read(void) {\n"
-        "    this->increment_read_index();\n"
-        "    return static_cast<T>(1);\n"
-        "}\n"
-        "\n"
-        "template<typename T>\n"
-        "void Control_Channel<T>::write(T t) {\n"
-        "    this->increment_write_index();\n"
-        "}\n"
-        "\n"
-        "template<typename T>\n"
-        "T Control_Channel<T>::preview(size_t offset) {\n"
-        "    return static_cast<T>(1);\n"
-        "}\n"
-        "\n"
-        "template<typename T>\n"
-        "void Control_Channel<T>::notify_read(size_t elements) {\n"
-        "    if (this->read_index >= (this->max_size - elements)) {\n"
-        "        this->read_index = (this->read_index + elements) - this->max_size;\n"
-        "    }\n"
-        "    else {\n"
-        "        this->read_index += elements;\n"
-        "    }\n"
-        "    if (this->full && (this->read_index != this->write_index)) {\n"
-        "        this->full = false;\n"
-        "    }\n"
-        "}\n"
-        "\n"
-        "template<typename T>\n"
-        "void Control_Channel<T>::notify_write(size_t elements) {\n"
-        "    if (this->write_index >= (this->max_size - elements)) {\n"
-        "        this->write_index = (this->write_index + elements) - this->max_size;\n"
-        "    }\n"
-        "    else {\n"
-        "        this->write_index += elements;\n"
-        "    }\n"
-        "    if (this->read_index == this->write_index) {\n"
-        "        this->full = true;\n"
-        "    }\n"
-        "}";
 
 std::pair<ABI_stdcpp::Header, ABI_stdcpp::Source>
-ABI_stdcpp::generate_channel_code(bool cntrl_chan)
+ABI_stdcpp::generate_channel_code(void)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
     std::filesystem::path path{ c->get_target_dir() };
     path /= "Channel.hpp";
@@ -245,11 +188,6 @@ ABI_stdcpp::generate_channel_code(bool cntrl_chan)
 		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path.string() };
 	}
 	output_file << data_channel;
-
-	// only create control channel class if required
-	if (cntrl_chan) {
-		output_file << "\n\n" << control_channel;
-	}
 
 	output_file.close();
 
@@ -317,4 +255,12 @@ std::string ABI_stdcpp::channel_free(
     std::string channel)
 {
     return channel + "->free()";
+}
+
+std::string ABI_stdcpp::channel_register_read(
+    std::string channel,
+    std::string callback,
+    std::string arg)
+{
+    return "";
 }

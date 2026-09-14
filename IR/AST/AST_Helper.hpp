@@ -1,3 +1,5 @@
+#pragma once
+
 #include "AST.hpp"
 #include <vector>
 

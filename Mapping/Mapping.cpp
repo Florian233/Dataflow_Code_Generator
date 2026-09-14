@@ -42,7 +42,7 @@ static void map_random(
 }
 
 Mapping::Mapping_Data* Mapping::mapping(IR::Dataflow_Network* dpn) {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	Mapping::Mapping_Data *data = new Mapping::Mapping_Data{};
 	data->actor_sharing = false;
 
@@ -55,9 +55,6 @@ Mapping::Mapping_Data* Mapping::mapping(IR::Dataflow_Network* dpn) {
 	}
 	else if (c->get_random_mapping()) {
 		map_random(dpn, data, c->get_cores());
-	}
-	else if (c->get_lft_mapping()) {
-		generate_level_based_mapping(dpn, data);
 	}
 	else {
 		// This cannot happen, just to detect when something in this codes goes totally wrong.

@@ -7,7 +7,7 @@ IR::Unit* Network_Reader::read_unit(
 	IR::Dataflow_Network* dpn,
 	std::filesystem::path path)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::filesystem::path full_path{ c->get_source_dir() };
 	full_path /= path;
 	full_path.replace_extension("cal");

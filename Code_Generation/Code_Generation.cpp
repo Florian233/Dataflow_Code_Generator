@@ -61,7 +61,7 @@ static std::set<std::string> get_unconnected_ports(IR::Actor_Instance *instance,
 		{
 			bool found{ false };
 			for (auto eit = instance->get_out_edges().begin(); eit != instance->get_out_edges().end(); ++eit) {
-				if ((*eit)->get_dst_port() == it->buffer_name) {
+				if ((*eit)->get_src_port() == it->buffer_name) {
 					found = true;
 					break;
 				}
@@ -75,83 +75,16 @@ static std::set<std::string> get_unconnected_ports(IR::Actor_Instance *instance,
 	return result;
 }
 
-static void read_scheduling_loop_bounds(
-	IR::Dataflow_Network* dpn)
-{
-	Config* c = c->getInstance();
-
-	for (auto a = dpn->get_actor_instances().begin(); a != dpn->get_actor_instances().end(); ++a) {
-		(*a)->set_sched_loop_bound(c->get_local_sched_loop_num());
-	}
-
-	if (c->get_bound_sched_loops_file().empty()) {
-		return;
-	}
-
-	rapidxml::xml_document<char>* doc = new rapidxml::xml_document<char>;
-
-	std::ifstream network_file(c->get_bound_sched_loops_file(), std::ifstream::in);
-	if (network_file.fail()) {
-		throw Converter_Exception{ "Cannot open the file " + c->get_bound_sched_loops_file()};
-	}
-	std::stringstream sched_loop_buffer;
-	sched_loop_buffer << network_file.rdbuf();
-	std::string str_to_parse = sched_loop_buffer.str();
-	char* buffer = new char[str_to_parse.size() + 1];
-	std::size_t length = str_to_parse.copy(buffer, str_to_parse.size() + 1);
-	buffer[length] = '\0';
-	doc->parse<0>(buffer);
-
-	if (strcmp(doc->first_node()->name(), "Loopbound") != 0) {
-		// something is wrong here, root node should be mapping ... bail out
-		throw Converter_Exception{ "Content of Loop Bound file erroneous." };
-	}
-
-	for (const rapidxml::xml_node<>* sub_node = doc->first_node()->first_node();
-		sub_node; sub_node = sub_node->next_sibling())
-	{
-		if (strcmp(sub_node->name(), "Bound") == 0) {
-			std::string inst;
-			std::string bound;
-			for (auto attributes = sub_node->first_attribute();
-				attributes; attributes = attributes->next_attribute())
-			{
-				if (strcmp(attributes->name(), "name") == 0) {
-					inst = attributes->value();
-				}
-				else if (strcmp(attributes->name(), "value") == 0) {
-					bound = attributes->value();
-				}
-				else {
-					throw Converter_Exception{ "Content of Loopbound file erroneous." };
-				}
-			}
-			IR::Actor_Instance* i = dpn->get_actor_instance(inst);
-			if (i == nullptr) {
-				throw Converter_Exception{ "Content of Loopbound file erroneous, actor instance "+ inst +" doesn't exit." };
-			}
-			i->set_sched_loop_bound(std::stoul(bound));
-		}
-		else {
-			throw Converter_Exception{ "Content of Loopbound file erroneous." };
-		}
-	}
-}
-
 void Code_Generation::generate_code(
 	IR::Dataflow_Network* dpn,
 	Optimization::Optimization_Data_Phase1* opt_data1,
 	Optimization::Optimization_Data_Phase2* opt_data2,
 	Mapping::Mapping_Data* map_data)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::vector<std::string> sources;
 	std::vector<std::string> includes;
 	std::string channel_include;
-
-	if (c->get_bound_local_sched_loops()) {
-		read_scheduling_loop_bounds(dpn);
-	}
 
 	if ((c->get_target_language() == Target_Language::c)
 		|| (c->get_target_language() == Target_Language::cpp))
@@ -254,10 +187,10 @@ void Code_Generation::generate_code(
 					}
 					std::cout << std::endl;
 				}
+#endif
 
 				unused_in_channels.insert(in_uncon.begin(), in_uncon.end());
 				unused_out_channels.insert(out_uncon.begin(), out_uncon.end());
-#endif
 			}
 
 			std::string name = a->get_class_name();
@@ -273,9 +206,9 @@ void Code_Generation::generate_code(
 				for (auto known_it = actor_variants_map[name].begin();
 					known_it != actor_variants_map[name].end(); ++known_it)
 				{
-					if (std::equal(unused_actions.begin(), unused_actions.end(), known_it->unused_actions.begin())
-						&& std::equal(unused_in_channels.begin(), unused_in_channels.end(), known_it->unused_in_channels.begin())
-						&& std::equal(unused_out_channels.begin(), unused_out_channels.end(), known_it->unused_out_channels.begin())
+					if (std::equal(unused_actions.begin(), unused_actions.end(), known_it->unused_actions.begin(), known_it->unused_actions.end())
+						&& std::equal(unused_in_channels.begin(), unused_in_channels.end(), known_it->unused_in_channels.begin(), known_it->unused_in_channels.end())
+						&& std::equal(unused_out_channels.begin(), unused_out_channels.end(), known_it->unused_out_channels.begin(), known_it->unused_out_channels.end())
 						&& known_it->scheduling_loop_bound == (*it)->get_sched_loop_bound())
 					{
 						found = true;
@@ -326,15 +259,18 @@ void Code_Generation::generate_code(
 		}
 	}
 
-	//Finally start with the code generation.
-	for (auto it = actor_variants_map.begin(); it != actor_variants_map.end(); ++it) {
-		for (auto variant = it->second.begin(); variant != it->second.end(); ++variant) {
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		for (auto it = dpn->get_actor_instances().begin(); it != dpn->get_actor_instances().end(); ++it) {
+			if ((*it)->is_deleted()) {
+				continue;
+			}
 
 			std::map<std::string, std::string> defaults;
 			std::vector<std::string> order;
-			std::string classname = variant->name;
-			auto i = Code_Generation_C_Cpp::generate_actor_code(variant->actor, variant->name, variant->unused_actions,
-				variant->unused_in_channels, variant->unused_out_channels, opt_data1, opt_data2, map_data, channel_include, defaults, order, variant->scheduling_loop_bound);
+			std::string classname = (*it)->get_name();
+			std::set<std::string> dummy;
+			auto i = Code_Generation_C_Cpp::generate_actor_code(*it, classname, dummy,
+				dummy, dummy, opt_data1, opt_data2, map_data, channel_include, defaults, order, (*it)->get_sched_loop_bound());
 			if (!i.first.empty()) {
 				includes.push_back(i.first);
 			}
@@ -343,8 +279,31 @@ void Code_Generation::generate_code(
 			}
 			constructor_defaults[classname] = defaults;
 			constructor_order[classname] = order;
-			variant->actor->set_identifier(classname);
-			schedulables[variant->actor->get_name()] = classname;
+			(*it)->set_identifier(classname);
+			schedulables[classname] = classname;
+		}
+	}
+	else {
+		//Finally start with the code generation.
+		for (auto it = actor_variants_map.begin(); it != actor_variants_map.end(); ++it) {
+			for (auto variant = it->second.begin(); variant != it->second.end(); ++variant) {
+
+				std::map<std::string, std::string> defaults;
+				std::vector<std::string> order;
+				std::string classname = variant->name;
+				auto i = Code_Generation_C_Cpp::generate_actor_code(variant->actor, variant->name, variant->unused_actions,
+					variant->unused_in_channels, variant->unused_out_channels, opt_data1, opt_data2, map_data, channel_include, defaults, order, variant->scheduling_loop_bound);
+				if (!i.first.empty()) {
+					includes.push_back(i.first);
+				}
+				if (!i.second.empty()) {
+					sources.push_back(i.second);
+				}
+				constructor_defaults[classname] = defaults;
+				constructor_order[classname] = order;
+				variant->actor->set_identifier(classname);
+				schedulables[variant->actor->get_name()] = classname;
+			}
 		}
 	}
 

@@ -14,6 +14,13 @@ enum Target_Language
 enum Target_ABI {
     stdc,
     stdcpp,
+    rtos
+};
+
+enum RTOS_Strategy {
+    basic,
+    counting,
+    schedcheck,
 };
 
 /* Singleton to store the configuration data parsed from command line parameters! */
@@ -29,24 +36,21 @@ class Config {
     bool static_alloc{ false };
     Target_Language target_language{ cpp };
     Target_ABI target_ABI{ stdcpp };
+    RTOS_Strategy rtos_strat{ basic };
+    std::string globals_prefix{};
+    std::string rtos_subdir{};
+    std::string channel_size_file;
+	std::string feedback_edges_file;
 
     // Mapping strategies
     bool mapping_all_to_all{ false };
     bool mapping_from_file{ false }; //Flag whether mapping_file is valid
     std::string mapping_file;
     bool mapping_level{ false };
-    bool mapping_weights{ false };
-    bool mapping_connected{ false };
     std::string output_nodes_file;
     bool use_outputs_from_file{ false };
     std::string input_nodes_file;
     bool use_inputs_from_file{ false };
-    std::string node_weights_file;
-    bool use_weights_from_file{ false };
-    bool balanced_mapping{ false };
-    bool est_mapping{ false }; /* Earliest start time */
-    bool lft_mapping{ false }; /* Latest finish time */
-    bool rr_mapping{ false };
     bool random_mapping{ false };
 
 
@@ -59,6 +63,13 @@ class Config {
     bool limit_local_sched_loops{ false };
     std::string loop_bound_file;
 
+    // RTOS
+    bool use_mutex{ false };
+    bool use_atomics{ false };
+    unsigned release{ 0 };
+    unsigned deadline{ 0 };
+	unsigned rtos_sched_cycles{ 1 };
+
     //OpenMP
     bool omp_tasking{ false };
 
@@ -66,7 +77,9 @@ class Config {
     bool prune_disconnected{ false };
     bool optimize_scheduling{ false };
     bool optimize_core_merge{ false };
+	bool optimize_config_merge{ false };
     bool prolog_epilog_opt{ true };
+	std::string merge_config_file;
 
     //verbose
     bool verbose_read{ false };
@@ -140,6 +153,13 @@ public:
 
     bool get_static_alloc(void) {
         return this->static_alloc;
+    }
+
+    void set_globals_prefix(std::string s) {
+        globals_prefix = s;
+    }
+    std::string get_globals_prefix(void) {
+        return globals_prefix;
     }
 
     void set_target_language(Target_Language t) {
@@ -252,9 +272,7 @@ public:
 
     void set_mapping_file(std::string f) {
         mapping_all_to_all = false;
-        mapping_connected = false;
         mapping_level = false;
-        mapping_weights = false;
         mapping_from_file = true;
         mapping_file = f;
     }
@@ -282,20 +300,6 @@ public:
         return mapping_level;
     }
 
-    void set_mapping_weights(void) {
-        mapping_weights = true;
-    }
-    bool get_mapping_weights(void) {
-        return mapping_weights;
-    }
-
-    void set_mapping_connected(void) {
-        mapping_connected = true;
-    }
-    bool get_mapping_connected(void) {
-        return mapping_connected;
-    }
-
     void set_output_nodes_file(std::string f) {
         output_nodes_file = f;
         use_outputs_from_file = true;
@@ -316,45 +320,6 @@ public:
     }
     bool get_use_inputs_from_file(void) {
         return use_inputs_from_file;
-    }
-
-    void set_node_weights_file(std::string f) {
-        node_weights_file = f;
-        use_weights_from_file = true;
-    }
-    std::string get_node_weights_file(void) {
-        return node_weights_file;
-    }
-    bool get_use_weights_from_file(void) {
-        return use_weights_from_file;
-    }
-
-    void set_lft_mapping(void) {
-        lft_mapping = true;
-    }
-    bool get_lft_mapping(void) {
-        return lft_mapping;
-    }
-
-    void set_est_mapping(void) {
-        est_mapping = true;
-    }
-    bool get_est_mapping(void) {
-        return est_mapping;
-    }
-
-    void set_balanced_mapping(void) {
-        balanced_mapping = true;
-    }
-    bool get_balanced_mapping(void) {
-        return balanced_mapping;
-    }
-
-    void set_rr_mapping(void) {
-        rr_mapping = true;
-    }
-    bool get_rr_mapping(void) {
-        return rr_mapping;
     }
 
     void set_random_mapping(void) {
@@ -420,10 +385,88 @@ public:
         return optimize_core_merge;
     }
 
+    void set_optimize_config_merge(void) {
+        optimize_config_merge = true;
+	}
+    bool get_optimize_config_merge(void) {
+        return optimize_config_merge;
+	}
+
     void clear_prolog_epilog_opt(void) {
         prolog_epilog_opt = false;
     }
     bool get_prolog_epilog_opt(void) {
         return prolog_epilog_opt;
     }
+
+    std::string get_merge_config_file(void) {
+        return merge_config_file;
+	}
+    void set_merge_config_file(std::string f) {
+        merge_config_file = f;
+    }
+
+    void set_use_mutex(void) {
+        use_mutex = true;
+    }
+    bool get_use_mutex(void) {
+        return use_mutex;
+    }
+
+    void set_use_atomics(void) {
+        use_atomics = true;
+    }
+    bool get_use_atomics(void) {
+        return use_atomics;
+    }
+
+    RTOS_Strategy get_rtos_strategy(void) {
+        return rtos_strat;
+    }
+    void set_rtos_strategy(RTOS_Strategy s) {
+        rtos_strat = s;
+    }
+
+    void set_release(unsigned r) {
+        release = r;
+    }
+    unsigned get_release(void) {
+        return release;
+    }
+
+    void set_deadline(unsigned d) {
+        deadline = d;
+    }
+    unsigned get_deadline(void) {
+        return deadline;
+    }
+
+    void set_rtos_subdir(std::string s) {
+        rtos_subdir = s;
+    }
+    std::string get_rtos_subdir(void) {
+        return rtos_subdir;
+    }
+
+    void set_rtos_sched_cycles(unsigned c) {
+        /* 0 would divide the scheduling loop bound by zero */
+        rtos_sched_cycles = (c == 0) ? 1 : c;
+	}
+    unsigned get_rtos_sched_cycles(void) {
+        return rtos_sched_cycles;
+	}
+
+    void set_channel_size_file(std::string f) {
+        channel_size_file = f;
+	}
+    std::string get_channel_size_file(void) {
+        return channel_size_file;
+	}
+
+    void set_feedback_edges_file(std::string f) {
+        feedback_edges_file = f;
+    }
+    std::string get_feedback_edges_file(void) {
+        return feedback_edges_file;
+	}
 };

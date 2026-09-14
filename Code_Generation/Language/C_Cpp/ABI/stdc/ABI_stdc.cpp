@@ -74,3 +74,8 @@ std::string ABI_stdc::allocation(
 	return prefix + var + " = (" + type + "*)malloc("+size+");\n";
 }
 
+std::string ABI_stdc::add_constructor_code(
+	std::string actor_class_name)
+{
+	return "";
+}

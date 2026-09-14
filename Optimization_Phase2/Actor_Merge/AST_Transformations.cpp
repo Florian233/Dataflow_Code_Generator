@@ -12,24 +12,25 @@
 class Prio_Comparison_Object {
 	std::vector<AST::Action_Priority*>& priorities;
 
+	unsigned get_prio_value(const std::string& name) const {
+		unsigned index = 0;
+		for (auto it = priorities.begin(); it != priorities.end(); ++it) {
+			for (auto p : (*it)->prio_rel) {
+				if ((p.name.size() <= name.size()) && (name.substr(0, p.name.size()) == p.name)) {
+					return index;
+				}
+				++index;
+			}
+		}
+		return index;
+	}
+
 public:
 	Prio_Comparison_Object(std::vector<AST::Action_Priority*>& _priorities) :priorities(_priorities) {}
 
-	//action1 > action2 -> true, false otherwise
+	/* ensures strict weak-ordering as required by std::sort */
 	bool operator()(AST::Action* action1, AST::Action* action2) const {
-		std::string name1 = action1->name.name;
-		std::string name2 = action2->name.name;
-		for (auto it = priorities.begin(); it != priorities.end(); ++it) {
-			for (auto p : (*it)->prio_rel) {
-				if ((p.name.size() <= name1.size()) && (name1.substr(0, p.name.size()) == p.name)) {
-					return true;
-				}
-				else if ((p.name.size() <= name2.size()) && (name2.substr(0, p.name.size()) == p.name)) {
-					return false;
-				}
-			}
-		}
-		return true;
+		return get_prio_value(action1->name.name) < get_prio_value(action2->name.name);
 	}
 };
 
@@ -722,7 +723,7 @@ static void replace_preview_by_var(
 	else if (dynamic_cast<AST::Expression*>(expr) != nullptr) {
 		auto tmp = dynamic_cast<AST::Expression*>(expr);
 		if (dynamic_cast<AST::PortPreview*>(tmp->child) != nullptr) {
-			auto p = dynamic_cast<AST::PortPreview*>(expr);
+			auto p = dynamic_cast<AST::PortPreview*>(tmp->child);
 			if (p->port == port) {
 				AST::Identifier* i = new AST::Identifier{};
 				tmp->child = i;
@@ -1057,7 +1058,12 @@ void AST_Transform::replace_identifiers_vardef(
 		if (replacements.contains(v->name.name)) {
 			v->name.name = replacements[v->name.name];
 		}
-		replace_identifiers_expr(v->assign, replacements);
+		if (v->assign != nullptr) {
+			replace_identifiers_expr(v->assign, replacements);
+		}
+		for (auto array : v->arrays) {
+			replace_identifiers_expr(array, replacements);
+		}
 	}
 }
 
@@ -1126,53 +1132,5 @@ void AST_Transform::replace_identifiers_stmt(
 		else {
 			assert(0);
 		}
-	}
-}
-
-/* Function depends on the structure created by the above functions, this saves some search time */
-void AST_Transform::remove_sizecheck(
-	std::vector<AST::Expression*>& expressions,
-	std::string port)
-{
-	std::vector<AST::Expression*> removelist;
-	for (auto expr : expressions) {
-		AST::Operator* ops = dynamic_cast<AST::Operator*>(expr);
-		if (ops == nullptr) {
-			continue;
-		}
-		if (dynamic_cast<AST::PortSize*>(ops->left) != nullptr) {
-			removelist.push_back(expr);
-		}
-		if (dynamic_cast<AST::PortSize*>(ops->right) != nullptr) {
-			removelist.push_back(expr);
-		}
-	}
-
-	for (auto r : removelist) {
-		expressions.erase(std::find(expressions.begin(), expressions.end(), r));
-	}
-}
-
-/* Function depends on the structure created by the above functions, this saves some search time */
-void AST_Transform::remove_freecheck(
-	std::vector<AST::Expression*>& expressions,
-	std::string port)
-{
-	std::vector<AST::Expression*> removelist;
-	for (auto expr : expressions) {
-		AST::Operator* ops = dynamic_cast<AST::Operator*>(expr);
-		if (ops == nullptr) {
-			continue;
-		}
-		if (dynamic_cast<AST::PortFree*>(ops->left) != nullptr) {
-			removelist.push_back(expr);
-		}
-		if (dynamic_cast<AST::PortFree*>(ops->right) != nullptr) {
-			removelist.push_back(expr);
-		}
-	}
-
-	for (auto r : removelist) {
-		expressions.erase(std::find(expressions.begin(), expressions.end(), r));
 	}
 }

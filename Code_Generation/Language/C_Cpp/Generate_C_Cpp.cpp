@@ -5,6 +5,7 @@
 #include "ABI/abi.hpp"
 #include <iostream>
 #include <fstream>
+#include "ABI/RTOS/RTOS_Core_Sched.hpp"
 
 /* Generate a simple base class all other actors inherit from.
  * This allows storing all actors in one list.
@@ -18,7 +19,7 @@ static void generate_base_class(void) {
 		"\tvirtual void schedule(void) = 0;\n"
 		"};";
 
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::filesystem::path path{ c->get_target_dir() };
 	path /= "Actor.hpp";
 
@@ -32,7 +33,7 @@ static void generate_base_class(void) {
 
 static void init_abi(IR::Dataflow_Network* dpn)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	ABI_INIT(c, dpn);
 }
 
@@ -45,7 +46,7 @@ Code_Generation_C_Cpp::start_code_generation(
 {
 	init_abi(dpn);
 
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	if (c->get_target_language() == Target_Language::cpp) {
 		//For C we cannot use inheritance
 		generate_base_class();
@@ -67,8 +68,11 @@ Code_Generation_C_Cpp::end_code_generation(
 	std::vector< Code_Generation_C_Cpp::Header>& headers,
 	std::vector< Code_Generation_C_Cpp::Source>& sources)
 {
-	Config* c = c->getInstance();
-	if (c->get_cmake()) {
+	Config* c = Config::getInstance();
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		rtos_generate_makefile(dpn);
+	}
+	else if (c->get_cmake()) {
 		std::string path = c->get_target_dir();
 		std::string source_files;
 		for (auto s : sources) {
@@ -91,7 +95,7 @@ Code_Generation_C_Cpp::generate_channel_code(
 	Optimization::Optimization_Data_Phase2* opt_data2,
 	Mapping::Mapping_Data* map_data)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
-	ABI_CHANNEL_GEN(c, map_data->actor_sharing)
+	ABI_CHANNEL_GEN(c)
 }

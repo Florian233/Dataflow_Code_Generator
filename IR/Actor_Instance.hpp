@@ -23,6 +23,7 @@ namespace IR {
 
 		/* Mapping of this actor instance of the core that shall execute this instance. */
 		unsigned mapping{ 111 };
+		unsigned sched_prio = 60;
 
 		/* Scheduling order of this node for the given mapping, this might be the result of the mapping ops */
 		/* -1 indicated that no scheduling order is set, sched_order numbers can be sorted but need not be unique nor contiguous. */
@@ -41,6 +42,9 @@ namespace IR {
 
 		bool critical_path = false;
 		unsigned parallel_path_id = 0;
+
+		bool is_source = false;
+		bool is_sink = false;
 
 		std::set<IR::Actor_Instance*> predecessors;
 
@@ -210,6 +214,22 @@ namespace IR {
 			join = true;
 		}
 
+		void set_source(void) {
+			is_source = true;
+		}
+
+		bool get_source(void) const {
+			return is_source;
+		}
+
+		void set_sink(void) {
+			is_sink = true;
+		}
+
+		bool get_sink(void) const {
+			return is_sink;
+		}
+
 		int get_sched_order(void) const {
 			return sched_order;
 		}
@@ -248,6 +268,14 @@ namespace IR {
 
 		std::map<std::string, std::string>& get_const_map(void) {
 			return actor->get_const_map();
+		}
+
+		unsigned get_sched_prio(void) {
+			return sched_prio;
+		}
+
+		void set_sched_prio(unsigned prio) {
+			sched_prio = prio;
 		}
 	};
 };

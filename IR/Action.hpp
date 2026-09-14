@@ -58,6 +58,9 @@ namespace IR {
 		}
 
 		bool has_guard(void) {
+			if  (tokens == nullptr) {
+				return false;
+			}
 			return !tokens->guards.empty();
 		}
 

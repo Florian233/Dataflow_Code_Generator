@@ -81,25 +81,41 @@ void IR::Actor::parse_priorities(void) {
 			processed.insert(processed.end(), coresp_actions.begin(), coresp_actions.end());
 		}
 	}
-}
 
-static unsigned anonymous_action_counter{ 0 };
+	bool changed = true;
+	while (changed) {
+		changed = false;
+		const size_t count = priorities.size();
+		for (size_t i = 0; i < count; ++i) {
+			for (size_t j = 0; j < count; ++j) {
+				if (priorities[i].action_low != priorities[j].action_high) {
+					continue;
+				}
+				const std::string high = priorities[i].action_high;
+				const std::string low = priorities[j].action_low;
+				if (high == low) {
+					continue;
+				}
+				bool exists = false;
+				for (const auto e : priorities) {
+					if (e.action_high == high && e.action_low == low) {
+						exists = true;
+						break;
+					}
+				}
+				if (!exists) {
+					priorities.push_back(Priority_Entry{ high, low });
+					changed = true;
+				}
+			}
+		}
+	}
+}
 
 void IR::Actor::parse_action(AST::Action *action, std::map<std::string, std::string>& symbol_map) {
 
-	std::string name;
-
-	if (!action->name.name.empty()) {
-		name = action->name.name;
-	}
-	else {
-		name = "action";
-		name.append(std::to_string(anonymous_action_counter));
-		++anonymous_action_counter;
-	}
-
-	IR::Action* actionobj = new IR::Action{ name, action };
-	actions.push_back(actionobj);
+	IR::Action* ir_action = new IR::Action{ action->name.name, action };
+	actions.push_back(ir_action);
 
 	std::vector<std::string> found_buffers;
 	for (auto input : action->input_patterns) {
@@ -108,7 +124,7 @@ void IR::Actor::parse_action(AST::Action *action, std::map<std::string, std::str
 		if (input->repeat != nullptr) {
 			count *= Conversion_Helper::evaluate_constant_expression(input->repeat, symbol_map);
 		}
-		actionobj->add_in_buffer(Buffer_Access{ input->port.name, count, get_in_port_type(input->port.name), input, nullptr });
+		ir_action->add_in_buffer(Buffer_Access{ input->port.name, count, get_in_port_type(input->port.name), input, nullptr });
 	}
 
 	// Now add all buffers that were not used by this action with tokenrate zero
@@ -116,7 +132,7 @@ void IR::Actor::parse_action(AST::Action *action, std::map<std::string, std::str
 		auto found = std::find(found_buffers.begin(), found_buffers.end(), it->buffer_name);
 		if (found == found_buffers.end()) {
 			//not found, add as zero
-			actionobj->add_in_buffer(Buffer_Access{ it->buffer_name, 0, get_in_port_type(it->buffer_name), nullptr, nullptr});
+			ir_action->add_in_buffer(Buffer_Access{ it->buffer_name, 0, get_in_port_type(it->buffer_name), nullptr, nullptr});
 		}
 	}
 
@@ -127,7 +143,7 @@ void IR::Actor::parse_action(AST::Action *action, std::map<std::string, std::str
 		if (output->repeat != nullptr) {
 			count *= Conversion_Helper::evaluate_constant_expression(output->repeat, symbol_map);
 		}
-		actionobj->add_out_buffer(Buffer_Access{ output->port.name, count, get_in_port_type(output->port.name), nullptr, output });
+		ir_action->add_out_buffer(Buffer_Access{ output->port.name, count, get_out_port_type(output->port.name), nullptr, output });
 	}
 
 	//Now add all buffers that are not used by this action with tokenrate zero
@@ -135,7 +151,7 @@ void IR::Actor::parse_action(AST::Action *action, std::map<std::string, std::str
 		auto found = std::find(found_buffers.begin(), found_buffers.end(), it->buffer_name);
 		if (found == found_buffers.end()) {
 			//not found, add as zero
-			actionobj->add_out_buffer(Buffer_Access{ it->buffer_name, 0, get_in_port_type(it->buffer_name), nullptr, nullptr});
+			ir_action->add_out_buffer(Buffer_Access{ it->buffer_name, 0, get_out_port_type(it->buffer_name), nullptr, nullptr});
 		}
 	}
 }
@@ -157,7 +173,7 @@ void IR::Actor::convert_import(AST::Import *import, Dataflow_Network* dpn) {
 }
 
 void IR::Actor::transform_IR(Dataflow_Network* dpn) {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	if (c->get_verbose_ir_gen()) {
 		std::cout << "IR transformation of " << class_name << "." << std::endl;
 	}
@@ -193,6 +209,28 @@ void IR::Actor::transform_IR(Dataflow_Network* dpn) {
 	for (auto x : units) {
 		for (auto v : x->vars) {
 			Conversion_Helper::read_constants(v, const_map);
+		}
+	}
+
+	/* Set name for every anonymous action to enable name based lookups. */
+	{
+		std::set<std::string> used_action_names;
+		for (auto a : ast->actor->actions) {
+			if (!a->name.name.empty()) {
+				used_action_names.insert(a->name.name);
+			}
+		}
+		unsigned anonymous_action_counter = 0;
+		for (auto a : ast->actor->actions) {
+			if (!a->name.name.empty()) {
+				continue;
+			}
+			std::string candidate;
+			do {
+				candidate = "action_" + std::to_string(anonymous_action_counter++);
+			} while (used_action_names.count(candidate) != 0);
+			a->name.name = candidate;
+			used_action_names.insert(candidate);
 		}
 	}
 

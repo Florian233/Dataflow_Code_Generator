@@ -109,8 +109,8 @@ std::string Scheduling::get_action_in_parameters(
 	std::map<std::string, std::vector<Scheduling::Channel_Schedule_Data> >& actions)
 {
 	std::string output;
-	Config* c = c->getInstance();
-	if (c->get_target_language() == Target_Language::c) {
+	Config* c = Config::getInstance();
+	if (c->get_target_ABI() == Target_ABI::stdc) {
 		output.append("_g");
 	}
 

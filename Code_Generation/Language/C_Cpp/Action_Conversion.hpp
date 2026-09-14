@@ -12,10 +12,6 @@ std::string convert_action(
 	   instead parameters are added to the generated function.
 	 */
 	bool input_channel_parameters,
-	/* Set to true if the output channels shall not be written directly,
-       instead parameters are added to the generated function.
-     */
-	bool output_channel_parameters,
 	std::set<std::string> unused_in_channels,
 	std::set<std::string> unused_out_channels,
 	std::string prefix,

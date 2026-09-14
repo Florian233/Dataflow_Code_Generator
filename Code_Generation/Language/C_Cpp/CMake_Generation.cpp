@@ -17,10 +17,11 @@ std::string code1 =
 std::string code2_cpp =
 "set(CMAKE_CXX_STANDARD 11)\n"
 "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n\n"
-"include_directories(${CMAKE_CURRENT_LIST_DIR})";
+"find_package(Threads REQUIRED)\n\n"
+"include_directories(${CMAKE_CURRENT_LIST_DIR})\n";
 
 std::string code2_c =
-"set(CMAKE_C_STANDARD C99)\n"
+"set(CMAKE_C_STANDARD 99)\n"
 "set(C_STANDARD_REQUIRED ON)\n\n"
 "include_directories(${CMAKE_CURRENT_LIST_DIR})";
 
@@ -29,7 +30,7 @@ void generate_cmake_file(
 	std::string source_files,
 	std::string path)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::filesystem::path cmake_path{ path };
 	cmake_path /= "CMakeLists.txt";
 
@@ -42,6 +43,7 @@ void generate_cmake_file(
 	output_file << ("add_executable(" + network_name + " " + source_files + ")\n");
 	if (c->get_target_language() == Target_Language::cpp) {
 		output_file << code2_cpp;
+		output_file << "target_link_libraries(" + network_name + " Threads::Threads)";
 	}
 	else if (c->get_target_language() == Target_Language::c) {
 		output_file << code2_c;

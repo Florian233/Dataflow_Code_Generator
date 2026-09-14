@@ -17,13 +17,15 @@ namespace Converter_RVC_Cpp {
 		AST::Function* function,
 		std::string prefix,
 		std::map<std::string, std::string> replacements,
-		std::map<std::string, std::string> const_map);
+		std::map<std::string, std::string> const_map,
+		std::string add_args = "");
 
 	std::string convert_procedure(
 		AST::Procedure* procedure,
 		std::string prefix,
 		std::map<std::string, std::string> replacements,
-		std::map<std::string, std::string> const_map);
+		std::map<std::string, std::string> const_map,
+		std::string add_args = "");
 
 	std::string convert_nativefunction(
 		AST::NativeFunction* native,
@@ -37,7 +39,8 @@ namespace Converter_RVC_Cpp {
 
 	std::string convert_expression(
 		AST::Expression* expression,
-		std::map<std::string, std::string> replacements);
+		std::map<std::string, std::string> replacements,
+		std::map<std::string, std::string> const_map);
 
 	std::string convert_statement(
 		AST::Statement* statement,
@@ -56,7 +59,8 @@ namespace Converter_RVC_Cpp {
 		/* Don't initialize non-constant values directly, instead generate constructor code */
 		bool noinit,
 		std::map<std::string, std::string> replacements,
-		std::map<std::string, std::string> const_map);
+		std::map<std::string, std::string> const_map,
+		bool rtos = false);
 
 	std::pair<std::string, std::string> convert_actorparam(
 		AST::ActorParameter* param,

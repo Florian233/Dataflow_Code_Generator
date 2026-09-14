@@ -15,8 +15,10 @@
 #include "IR/AST/AST_Printer.hpp"
 #include "IR/AST/AST_Helper.hpp"
 #include <filesystem>
-#include <fstream>   
-#include <iostream> 
+#include <fstream>
+#include <iostream>
+#include "rapidxml-1.13/rapidxml.hpp"
+using namespace rapidxml;
 
 #define USE_MAXLOOP
 
@@ -28,17 +30,12 @@ struct Channel_Variable {
 	AST::VarDefinition* index_r = nullptr;
 	AST::VarDefinition* sz = nullptr;
 	bool full_clear = false;
+	AST::Type* type = nullptr;
 };
 
 struct Channel_Dependency {
 	IR::Edge* edge;
 	double value;
-};
-
-struct Channel_Eval {
-	Channel_Variable* def;
-	bool in;
-	unsigned value;
 };
 
 using Connector = std::pair<std::string, std::string>;
@@ -61,13 +58,15 @@ struct sched_cond_merge {
 };
 
 struct Merge_Data {
-	std::map<IR::Edge*, AST::InputChannelReadStatement*> edge_read;
 	std::map<IR::Actor_Instance*, sched_cond_merge*> sched_cond_fusion;
-	/* some entries might be invalid, because they are part of other merges and then deleted; takes two steps to reach this situation!
+	/* some entries might be invalid, because they are part of other merges and then deleted!
 	 * use with care!
 	 */
 	std::map<unsigned, sched_cond_merge*> sched_cond_fusion_id;
 	unsigned sched_conf_fusion_id_counter = 0;
+
+	std::map<IR::Actor_Instance*, std::vector<IR::Actor_Instance*>> combine_actors;
+	std::map<IR::Actor_Instance*, sched_cond_merge*> scm;
 
 	std::map<IR::Edge*, Channel_Variable> channels;
 #ifdef USE_MUSTPRODUCE
@@ -107,6 +106,17 @@ struct Merge_Data {
 	std::map<IR::Edge*, unsigned> mincons;
 	std::map<IR::Edge*, unsigned> maxcons;
 };
+
+static bool is_external_input(
+	IR::Edge* edge,
+	IR::Actor_Instance* inst)
+{
+	auto src = dynamic_cast<IR::Actor_Instance*>(edge->get_source());
+	if ((src != nullptr) && (src->get_composit_actor() == inst->get_composit_actor())) {
+		return false;
+	}
+	return true;
+}
 
 /* Go through predecessors, and if part of the merge, find a synchronous FSM, if found return, otherwise nullptr */
 static AST::FSM_Enumeration* get_fsmenum(
@@ -291,7 +301,7 @@ static bool is_relation_compensated(
 			uncompensated.insert(port);
 		}
 	}
-	return true;
+	return ret;
 }
 
 static std::pair<unsigned, unsigned> get_min_max_production(
@@ -345,10 +355,9 @@ static void get_min_max_consumption(
 	}
 }
 
-static void create_channel(
-	AST::Actor *ast,
+static void register_channel(
 	Merge_Data* data,
-	AST::Type type,
+	AST::Type* type,
 	IR::Edge *edge,
 	unsigned size,
 	bool fullclear)
@@ -356,16 +365,24 @@ static void create_channel(
 	Channel_Variable cv;
 	cv.size = size;
 	cv.full_clear = fullclear;
+	cv.type = type;
+	data->channels[edge] = cv;
+}
+
+static void create_channel(
+	Channel_Variable& cv,
+	IR::Edge* edge)
+{
 	cv.channel = new AST::VarDefinition{};
 	cv.channel->name.name = edge->get_name();
-	cv.channel->type = type;
+	AST::Type type_copy{ *cv.type };
+	cv.channel->type = type_copy;
 	cv.channel->constassign = false;
-	ast->vars.push_back(cv.channel);
-	if (size > 1) {
+	if (cv.size > 1) {
 		AST::Expression* sz_sz = new AST::Expression{};
-		AST::Literal* l = new AST::Literal{};
-		l->literal = std::to_string(size);
-		sz_sz->child = l;
+		AST::Literal* sz_l = new AST::Literal{};
+		sz_l->literal = std::to_string(cv.size);
+		sz_sz->child = sz_l;
 		cv.channel->arrays.push_back(sz_sz);
 
 		cv.index_r = new AST::VarDefinition{};
@@ -377,7 +394,6 @@ static void create_channel(
 		ll->literal = "0";
 		e->child = ll;
 		cv.index_r->assign = e;
-		ast->vars.push_back(cv.index_r);
 	}
 	cv.sz = new AST::VarDefinition{};
 	cv.sz->constassign = false;
@@ -388,17 +404,13 @@ static void create_channel(
 	l->literal = "0";
 	sz_init->child = l;
 	cv.sz->assign = sz_init;
-	ast->vars.push_back(cv.sz);
-
-	data->channels[edge] = cv;
 }
 
 static void determine_channel_sizes(
-	IR::Composit_Actor *composit,
 	Merge_Data* data,
 	std::vector<IR::Actor_Instance*>& instances)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	for (auto inst : instances) {
 		unsigned loopcount = 1;
@@ -499,13 +511,36 @@ static void determine_channel_sizes(
 				}
 
 				for (auto issue : nocompensation) {
-					channelsz[issue] = c->get_FIFO_size();
+					auto edge = port_edge_map[issue];
+					if (inputs.contains(edge)) {
+						continue;
+					}
+					if (edge->get_specified_size() != 0) {
+						channelsz[issue] = edge->get_specified_size();
+					}
+					else {
+						channelsz[issue] = c->get_FIFO_size();
+					}
 				}
 				for (auto in : inst->get_in_edges()) {
+					if (inputs.contains(in)) {
+						continue;
+					}
 					if (nocompensation.contains(in->get_dst_port())) {
 						continue;
 					}
-					unsigned s = std::max(2 * maxprod[in->get_dst_port()], 2 * maxcons[in->get_dst_port()]);
+					const std::string& port = in->get_dst_port();
+					unsigned s;
+					if (!in->get_feedback() &&
+						(minprod[port] == maxprod[port]) &&
+						(mincons[port] == maxcons[port]) &&
+						(minprod[port] == mincons[port]) &&
+						(minprod[port] != 0)) {
+						s = std::max(maxprod[port], maxcons[port]);
+					}
+					else {
+						s = std::max(2 * maxprod[port], 2 * maxcons[port]);
+					}
 					if (channelsz.contains(in->get_dst_port())) {
 						if (channelsz[in->get_dst_port()] < s) {
 							channelsz[in->get_dst_port()] = s;
@@ -518,37 +553,46 @@ static void determine_channel_sizes(
 			}
 
 			for (auto it : channelsz) {
-				AST::Type type;
+				AST::Type* type = nullptr;
 				for (auto port : inst->get_ast()->actor->inports) {
 					if (port->name.name == it.first) {
-						type = port->type;
+						type = &port->type;
 					}
 				}
-				create_channel(composit->get_ast()->actor, data, type, port_edge_map[it.first], it.second, false);
+				register_channel(data, type, port_edge_map[it.first], it.second, false);
 			}
 		}
 		else {
-			unsigned size;
-			bool full_clear;
-			AST::Type type = inst->get_ast()->actor->inports.front()->type;
-			std::string portname = inst->get_in_edges().front()->get_dst_port();
-			if ((minprod[portname] == maxprod[portname]) &&
-				(maxcons[portname] == mincons[portname]))
-			{
-				if (minprod[portname] == mincons[portname]) {
-					full_clear = true;
-					size = minprod[portname];
+			IR::Edge* edge = inst->get_in_edges().front();
+			if (!inputs.contains(edge)) {
+				unsigned size;
+				bool full_clear;
+				const std::string& portname = edge->get_dst_port();
+				/* Resolve the type from the actually connected port */
+				AST::Type* type = nullptr;
+				for (auto port : inst->get_ast()->actor->inports) {
+					if (port->name.name == portname) {
+						type = &port->type;
+					}
+				}
+				if ((minprod[portname] == maxprod[portname]) &&
+					(maxcons[portname] == mincons[portname]))
+				{
+					if (minprod[portname] == mincons[portname]) {
+						full_clear = true;
+						size = minprod[portname];
+					}
+					else {
+						full_clear = maxprod[portname] % maxcons[portname] == 0;
+						size = std::max(2 * maxprod[portname], 2 * maxcons[portname]);
+					}
 				}
 				else {
-					full_clear = maxprod[portname] % maxcons[portname] == 0;
+					full_clear = false;
 					size = std::max(2 * maxprod[portname], 2 * maxcons[portname]);
 				}
+				register_channel(data, type, edge, size, full_clear);
 			}
-			else {
-				full_clear = false;
-				size = std::max(2 * maxprod[portname], 2 * maxcons[portname]);
-			}
-			create_channel(composit->get_ast()->actor, data, type, inst->get_in_edges().front(), size, full_clear);
 		}
 		data->loopcount[inst] = loopcount; /* always one currently, only for init purposes, probably a leftover */
 		data->max_loopcount[inst] = loopcount; /* always one currently, only for init purposes, probably a leftover */
@@ -682,37 +726,25 @@ static bool determine_cycle(
 	std::string search,
 	std::string child,
 	std::string initial_state,
-	std::set<std::string>& cycle,
 	std::set<std::string> processed)
 {
 	if (child == initial_state) {
 		return false;
 	}
-
-	processed.insert(child);
-
 	if (child == search) {
-		cycle.insert(child);
 		return true;
 	}
+	if (processed.contains(child)) {
+		return false;
+	}
+	processed.insert(child);
 
-	bool found = false;
-	auto next = next_states[child];
-	for (auto n : next) {
-		if (processed.contains(n)) {
-			continue;
-		}
-		std::set<std::string> processed_list_cur{ processed };
-		std::set<std::string> cycle_cur{ cycle };
-
-		auto suc = determine_cycle(next_states, search, n, initial_state, cycle_cur, processed_list_cur);
-		if (suc && (cycle_cur.size() > cycle.size())) {
-			found = true;
-			cycle.clear();
-			cycle.insert(cycle_cur.begin(), cycle_cur.end());
+	for (auto n : next_states[child]) {
+		if (determine_cycle(next_states, search, n, initial_state, processed)) {
+			return true;
 		}
 	}
-	return found;
+	return false;
 }
 
 static void get_phase_actions(
@@ -733,7 +765,7 @@ static void get_phase_actions(
 		return;
 	}
 
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	if (!c->get_prolog_epilog_opt()) {
 		std::set<std::string> states;
 		actor->get_all_states(states);
@@ -760,20 +792,18 @@ static void get_phase_actions(
 	}
 
 	std::set<std::string> do_cycle;
-	std::set<std::string> tmp_cycle;
 	std::string init_state = actor->get_initial_state();
 	std::set<std::string> states_to_process;
 	actor->get_all_states(states_to_process);
-	while(!states_to_process.empty()) {
-		auto it = states_to_process.begin();
-		std::string state = *it;
-		states_to_process.erase(it);
-		std::set<std::string> next = next_states[state];
-		for (auto n : next) {
-			determine_cycle(next_states, state, n, init_state, tmp_cycle, std::set<std::string>());
-			if (tmp_cycle.size() > do_cycle.size()) {
-				do_cycle = tmp_cycle;
-				tmp_cycle.clear();
+
+	for (auto state : states_to_process) {
+		if (state == init_state) {
+			continue;
+		}
+		for (auto n : next_states[state]) {
+			if (determine_cycle(next_states, state, n, init_state, std::set<std::string>())) {
+				do_cycle.insert(state);
+				break;
 			}
 		}
 	}
@@ -997,6 +1027,132 @@ static std::string find_portname(
 	return "";
 }
 
+static void rename_port_in_expr(
+	AST::BaseExpression* expr,
+	const std::string& oldp,
+	const std::string& newp)
+{
+	if (expr == nullptr) {
+		return;
+	}
+	if (auto p = dynamic_cast<AST::PortSize*>(expr)) {
+		if (p->port == oldp) { p->port = newp; }
+	}
+	else if (auto p = dynamic_cast<AST::PortFree*>(expr)) {
+		if (p->port == oldp) { p->port = newp; }
+	}
+	else if (auto p = dynamic_cast<AST::PortPreview*>(expr)) {
+		if (p->port == oldp) { p->port = newp; }
+		if (p->index != nullptr) { rename_port_in_expr(p->index->index, oldp, newp); }
+	}
+	else if (auto e = dynamic_cast<AST::Expression*>(expr)) {
+		rename_port_in_expr(e->child, oldp, newp);
+	}
+	else if (auto o = dynamic_cast<AST::Operator*>(expr)) {
+		rename_port_in_expr(o->left, oldp, newp);
+		rename_port_in_expr(o->right, oldp, newp);
+	}
+	else if (auto t = dynamic_cast<AST::TernaryOperator*>(expr)) {
+		rename_port_in_expr(t->cond, oldp, newp);
+		rename_port_in_expr(t->ifblock, oldp, newp);
+		rename_port_in_expr(t->elseblock, oldp, newp);
+	}
+	else if (auto i = dynamic_cast<AST::Identifier*>(expr)) {
+		for (auto index : i->indices) {
+			rename_port_in_expr(index->index, oldp, newp);
+		}
+		if (i->call != nullptr) {
+			for (auto pr : i->call->parameters) {
+				rename_port_in_expr(pr, oldp, newp);
+			}
+		}
+	}
+	else if (auto lc = dynamic_cast<AST::ListComprehension*>(expr)) {
+		for (auto g : lc->generators) {
+			rename_port_in_expr(g->start, oldp, newp);
+			rename_port_in_expr(g->end, oldp, newp);
+		}
+		for (auto e : lc->expressions) {
+			rename_port_in_expr(e, oldp, newp);
+		}
+	}
+	else {
+		/* no port reference */
+	}
+}
+
+static void rename_port_in_stmts(
+	std::vector<AST::Statement*>& statements,
+	const std::string& oldp,
+	const std::string& newp)
+{
+	for (auto s : statements) {
+		if (auto r = dynamic_cast<AST::InputChannelReadStatement*>(s)) {
+			if (r->port.name == oldp) { r->port.name = newp; }
+			if (r->index != nullptr) { rename_port_in_expr(r->index->index, oldp, newp); }
+		}
+		else if (auto w = dynamic_cast<AST::OutputChannelWriteStatement*>(s)) {
+			if (w->port.name == oldp) { w->port.name = newp; }
+			rename_port_in_expr(w->expr, oldp, newp);
+		}
+		else if (auto b = dynamic_cast<AST::BlockStatement*>(s)) {
+			rename_port_in_stmts(b->statements, oldp, newp);
+		}
+		else if (auto i = dynamic_cast<AST::IfStatement*>(s)) {
+			rename_port_in_expr(i->condition, oldp, newp);
+			rename_port_in_stmts(i->ifblock, oldp, newp);
+			if (i->elseblock != nullptr) {
+				rename_port_in_stmts(i->elseblock->statements, oldp, newp);
+			}
+		}
+		else if (auto wst = dynamic_cast<AST::WhileStatement*>(s)) {
+			rename_port_in_expr(wst->condition, oldp, newp);
+			rename_port_in_stmts(wst->statements, oldp, newp);
+		}
+		else if (auto f = dynamic_cast<AST::ForeachStatement*>(s)) {
+			for (auto g : f->generators) {
+				rename_port_in_expr(g->start, oldp, newp);
+				rename_port_in_expr(g->end, oldp, newp);
+			}
+			rename_port_in_stmts(f->statements, oldp, newp);
+		}
+		else if (auto a = dynamic_cast<AST::AssignmentStatement*>(s)) {
+			if (a->asgnvalue != nullptr) { rename_port_in_expr(a->asgnvalue, oldp, newp); }
+			for (auto index : a->indices) {
+				rename_port_in_expr(index->index, oldp, newp);
+			}
+		}
+		else if (auto c = dynamic_cast<AST::CallStatement*>(s)) {
+			for (auto p : c->parameters) {
+				rename_port_in_expr(p, oldp, newp);
+			}
+		}
+		else {
+			/* no port reference */
+		}
+	}
+}
+
+static void rename_port_in_action(
+	AST::Action* a,
+	const std::string& oldp,
+	const std::string& newp)
+{
+	rename_port_in_stmts(a->statements, oldp, newp);
+	for (auto g : a->guards) {
+		rename_port_in_expr(g, oldp, newp);
+	}
+	for (auto g : a->output_guards) {
+		rename_port_in_expr(g, oldp, newp);
+	}
+	for (auto ip : a->input_patterns) {
+		if (ip->port.name == oldp) { ip->port.name = newp; }
+	}
+	for (auto op : a->output_expressions) {
+		if (op->port.name == oldp) { op->port.name = newp; }
+	}
+}
+
 /* Function is called last by do, so do is kept for the following operations. */
 static void replace_size_checks(
 	IR::Actor_Instance *inst,
@@ -1169,6 +1325,7 @@ static void replace_out_guards(
 					/* get rid of it */
 					delete_list.push_back(o);
 					found = true;
+					break;
 				}
 			}
 			if (!found) {
@@ -1199,7 +1356,10 @@ static void replace_out_guards(
 	}
 
 	for (auto d : delete_list) {
-		action->output_guards.erase(std::find(action->output_guards.begin(), action->output_guards.end(), d));
+		auto it = std::find(action->output_guards.begin(), action->output_guards.end(), d);
+		if (it != action->output_guards.end()) {
+			action->output_guards.erase(it);
+		}
 	}
 }
 
@@ -1358,9 +1518,6 @@ static void transform_actions_to_functions(
 		}
 		function_name[0] = std::toupper(function_name[0]);
 		function_name += "_" + a->name.name;
-		if (a->name.name.empty()) {
-			function_name += "action";
-		}
 		function_name = inst->get_name() + "_" + function_name;
 
 		AST::Procedure* p = new AST::Procedure{};
@@ -1403,8 +1560,10 @@ static void transform_actions(
 	for (auto c : combine_edge) {
 		auto tmp = data->inst_action_port_szcheck_map[dynamic_cast<IR::Actor_Instance*>(c->get_sink())];
 		for (auto a : tmp) {
-			//std::cout << "Removing sz check from " << c->get_sink()->get_name() << " port: " << c->get_dst_port() << " action: " << a.first << std::endl;
-			remove_expression_from_cond(a.second[c->get_dst_port()]);
+			auto sz = a.second.find(c->get_dst_port());
+			if ((sz != a.second.end()) && (sz->second != nullptr)) {
+				remove_expression_from_cond(sz->second);
+			}
 		}
 
 		auto x = data->inst_action_port_freecheck_map[dynamic_cast<IR::Actor_Instance*>(c->get_sink())];
@@ -1445,6 +1604,29 @@ static void transform_actions(
 			}
 		}
 
+		for (auto i : first->guards) {
+			AST::BaseExpression** b;
+			std::string portname = find_portname(i, &b);
+			if (portname.empty() || !inports.contains(portname)) {
+				continue;
+			}
+			auto expr = i;
+			if (data->loopcount[inst] > 1) {
+				auto ops = dynamic_cast<AST::Operator*>(expr->child);
+				auto loopmult = new AST::Operator{};
+				loopmult->ops = "*";
+				AST::Literal* l = new AST::Literal{};
+				l->literal = std::to_string(data->loopcount[inst]);
+				loopmult->right = l;
+				loopmult->left = ops->right;
+				AST::Expression* e = new AST::Expression{};
+				e->child = loopmult;
+				e->brakets = true;
+				ops->right = e;
+			}
+			scm->overall_guards_do.push_back(expr);
+		}
+
 		for (auto o : first->output_guards) {
 			auto expr = o;
 			if (data->loopcount[inst] > 1) {
@@ -1468,14 +1650,29 @@ static void transform_actions(
 
 			std::vector<AST::Expression*> to_erase;
 			for (auto g : a->guards) {
-				for (auto x : data->inst_action_port_szcheck_map[inst][first->name.name]) {
+				bool erase = false;
+				for (auto x : data->inst_action_port_szcheck_map[inst][a->name.name]) {
 					if (x.second == g) {
-						to_erase.push_back(g);
+						erase = true;
+						break;
 					}
+				}
+				if (!erase) {
+					AST::BaseExpression** b;
+					std::string portname = find_portname(g, &b);
+					if (!portname.empty() && inports.contains(portname)) {
+						erase = true;
+					}
+				}
+				if (erase) {
+					to_erase.push_back(g);
 				}
 			}
 			for (auto erase : to_erase) {
-				a->guards.erase(std::find(a->guards.begin(), a->guards.end(), erase));
+				auto it = std::find(a->guards.begin(), a->guards.end(), erase);
+				if (it != a->guards.end()) {
+					a->guards.erase(it);
+				}
 			}
 		}
 	}
@@ -1522,7 +1719,7 @@ static void combine_actions(
 	std::map<std::string, std::vector<IR::Action*>> init_actions;
 	std::map<std::string, std::vector<IR::Action*>> do_actions;
 	std::map<std::string, std::vector<IR::Action*>> done_actions;
-	sched_cond_merge* scm = data->sched_cond_fusion[inst];
+	sched_cond_merge* scm = data->scm[inst];
 #ifdef USE_MAXLOOP
 	unsigned loopsz = data->max_loopcount[inst]; /* only applicable in do */
 #else
@@ -1535,7 +1732,7 @@ static void combine_actions(
 
 	get_phase_actions(inst->get_actor(), init_actions, do_actions, done_actions);
 
-#ifdef DEBUG_OPTIMIZATION_MERGEX
+#ifdef DEBUG_OPTIMIZATION_MERGE
 	std::cout << "Init actions:\n";
 	for (auto x : init_actions) {
 		std::cout << "  State: " << x.first << ":";
@@ -1637,6 +1834,41 @@ static void combine_actions(
 
 	std::map<std::string, std::string> functions;
 	transform_actions_to_functions(inst, inports, outports, data, composit, functions);
+
+	{
+		std::vector<AST::Action*> all_actions = inst->get_ast()->actor->actions;
+		if (inst->get_ast()->actor->init != nullptr) {
+			all_actions.push_back(inst->get_ast()->actor->init);
+		}
+		std::set<std::string> renamed_inports;
+		std::set<std::string> renamed_outports;
+		for (auto oldname : inports) {
+			Connector con;
+			con.first = inst->get_name();
+			con.second = oldname;
+			std::string newname = data->new_ports.contains(con) ? data->new_ports[con] : oldname;
+			if (newname != oldname) {
+				for (auto a : all_actions) {
+					rename_port_in_action(a, oldname, newname);
+				}
+			}
+			renamed_inports.insert(newname);
+		}
+		for (auto oldname : outports) {
+			Connector con;
+			con.first = inst->get_name();
+			con.second = oldname;
+			std::string newname = data->new_ports.contains(con) ? data->new_ports[con] : oldname;
+			if (newname != oldname) {
+				for (auto a : all_actions) {
+					rename_port_in_action(a, oldname, newname);
+				}
+			}
+			renamed_outports.insert(newname);
+		}
+		inports = renamed_inports;
+		outports = renamed_outports;
+	}
 
 	/* Add state checks to guards */
 	if (!init_actions.empty()) {
@@ -1888,6 +2120,7 @@ static void combine_actions(
 			block = block_nostate;
 		}
 		else {
+			assert(loopsz > 1);
 			for (auto s : res) {
 				loop->statements.push_back(s);
 			}
@@ -1953,7 +2186,6 @@ static void combine_actions(
 		l.insert(l.begin(), must_produce_port_checks.begin(), must_produce_port_checks.end());
 	}
 #endif
-
 	l.push_back(block);
 	if (inst->get_actor()->is_static()) {
 		l.insert(l.end(), additional_code.begin(), additional_code.end());
@@ -2053,7 +2285,7 @@ static void add_to_sched_cond(
 	}
 
 	/* Re-calculate channelsizes / check if inf channel has to be propagated and reduced! */
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	for (auto out : inst->get_out_edges()) {
 		auto dst = out->get_sink();
 		auto dst_inst = dynamic_cast<IR::Actor_Instance*>(dst);
@@ -2076,6 +2308,9 @@ static void add_to_sched_cond(
 
 				/* update all input channels */
 				for (auto in : inst->get_in_edges()) {
+					if (is_external_input(in, inst)) {
+						continue;
+					}
 					auto chan = data->channels[in];
 					chan.size = c->get_FIFO_size();
 					if (!chan.channel->arrays.empty()) {
@@ -2189,49 +2424,44 @@ static void combine_sched_cond(
 		}
 	}
 
-	/* Re-calculate channelsizes / check if inf channel has to be propagated and reduced! */
-	Config* c = c->getInstance();
-	for (auto out : inst->get_out_edges()) {
-		auto dst = out->get_sink();
-		auto dst_inst = dynamic_cast<IR::Actor_Instance*>(dst);
-		if ((dst_inst == nullptr) || (dst_inst->get_composit_actor() != inst->get_composit_actor())) {
+	for (auto out : affected_edges) {
+		unsigned old_channel_sz = data->channels[out].size;
+		unsigned channel_sz = std::max(data->maxprod[out], data->mincons[out]);
+
+		if (old_channel_sz <= channel_sz) {
 			continue;
 		}
-		if (data->sched_cond_fusion.contains(dst_inst) &&
-			(data->sched_cond_fusion[dst_inst]->id == s->id))
-		{
-			if (data->channels[out].size == c->get_FIFO_size()) {
-				unsigned new_sz = 2 * std::max(data->maxprod[out], data->mincons[out]);
-				{
-					auto chan = data->channels[out];
-					chan.size = new_sz;
-					AST::Expression* e = chan.channel->arrays.front();
-					AST::Literal* l = dynamic_cast<AST::Literal*>(e->child);
-					assert(l != nullptr);
-					l->literal = std::to_string(chan.size);
-					data->channels[out] = chan;
+		data->channels[out].size = channel_sz;
+		std::set<std::string> contrib;
+		for (auto a : inst->get_actor()->get_actions()) {
+			bool produces = false;
+			for (auto o : a->get_out_buffers()) {
+				if ((o.buffer_name == out->get_src_port()) && (o.tokenrate != 0)) {
+					produces = true;
 				}
+			}
+			if (!produces) {
+				continue;
+			}
+			for (auto in : a->get_in_buffers()) {
+				if (in.tokenrate != 0) {
+					contrib.insert(in.buffer_name);
+				}
+			}
+		}
 
-				/* update all input channels */
-				for (auto in : inst->get_in_edges()) {
-					auto chan = data->channels[in];
-					chan.size = c->get_FIFO_size();
-					if (!chan.channel->arrays.empty()) {
-						AST::Expression* e = chan.channel->arrays.front();
-						AST::Literal* l = dynamic_cast<AST::Literal*>(e->child);
-						assert(l != nullptr);
-						l->literal = std::to_string(chan.size);
-					}
-					else {
-						AST::Expression* e = new AST::Expression{};
-						AST::Literal* l = new AST::Literal{};
-						l->literal = std::to_string(chan.size);
-						e->child = l;
-						chan.channel->arrays.push_back(e);
-					}
-					data->channels[out] = chan;
-				}
-				return;
+		unsigned prodrate = data->maxprod[out];
+		for (auto in : inst->get_in_edges()) {
+			if (is_external_input(in, inst)) {
+				continue;
+			}
+			if (!contrib.contains(in->get_dst_port())) {
+				continue;
+			}
+			unsigned consrate = data->maxcons[in];
+			unsigned propagated = (prodrate != 0) ? (old_channel_sz * consrate / prodrate) : old_channel_sz;
+			if (data->channels[in].size < propagated) {
+				data->channels[in].size = propagated;
 			}
 		}
 	}
@@ -2258,19 +2488,8 @@ static void find_combine_actor(
 	std::vector<IR::Actor_Instance*> &result)
 {
 	std::set<IR::Actor_Instance*> res_tmp;
-	std::set<IR::Actor_Instance*> all_childs;
 
 	std::set<IR::Edge*> affected_edges;
-	for (auto out : instance->get_out_edges()) {
-		if (out->get_feedback()) {
-			continue;
-		}
-		auto x = dynamic_cast<IR::Actor_Instance*>(out->get_sink());
-		if ((x == nullptr) || (instance->get_composit_actor() != x->get_composit_actor())) {
-			continue;
-		}
-		all_childs.insert(x);
-	}
 
 	for (auto out : instance->get_out_edges()) {
 		if (out->get_feedback()) {
@@ -2281,12 +2500,6 @@ static void find_combine_actor(
 			continue;
 		}
 		bool recursion = closes_sched_cond_cycle(instance, x, merge_data);
-		for (auto child : all_childs) {
-			if (x->is_predecessor(child)) {
-				recursion = true;
-			}
-		}
-
 		if (recursion
 #ifdef USE_MUSTPRODUCE
 			|| edge_is_must_produce(out, merge_data)
@@ -2450,27 +2663,33 @@ static void add_initialize_action(
 	}
 
 	AST_Transform::replace_identifiers_stmt(statements, replacements);
-	ast->statements.insert(ast->statements.end(), statements.begin(), statements.end());
 
+	AST::Action tmp_action;
+	tmp_action.statements = statements;
 	for (auto edge : inst->get_out_edges()) {
 		Connector con;
 		con.first = inst->get_name();
 		con.second = edge->get_src_port();
 		if (!data->new_ports.contains(con)) {
-			std::vector<AST::Statement*>* stmt_list = nullptr;
-			auto o = find_port_write(ast, edge->get_src_port(), &stmt_list);
-			if (o != nullptr) {
-				assert(stmt_list != nullptr);
-				auto channel = data->channels[edge];
-				std::string index_r_name;
-				if (channel.index_r != nullptr) {
-					index_r_name = channel.index_r->name.name;
+			auto channel = data->channels[edge];
+			std::string index_r_name;
+			if (channel.index_r != nullptr) {
+				index_r_name = channel.index_r->name.name;
+			}
+			while (true) {
+				std::vector<AST::Statement*>* stmt_list = nullptr;
+				auto o = find_port_write(&tmp_action, edge->get_src_port(), &stmt_list);
+				if (o == nullptr) {
+					break;
 				}
-				AST_Transform::channelwritestmt_assignment(ast, o, channel.channel->name.name,
+				assert(stmt_list != nullptr);
+				AST_Transform::channelwritestmt_assignment(&tmp_action, o, channel.channel->name.name,
 					index_r_name, channel.sz->name.name, channel.size, stmt_list);
 			}
 		}
 	}
+
+	ast->statements.insert(ast->statements.end(), tmp_action.statements.begin(), tmp_action.statements.end());
 }
 
 void add_to_merge(
@@ -2503,13 +2722,17 @@ void add_to_merge(
 		merge_data->fsmvar[instance] = fsmvardef->name.name;
 	}
 
-	/* For each phase find merge partner if existing */
-	std::vector<IR::Actor_Instance*> combine;
-	find_combine_actor(instance, merge_data, combine);
+	std::vector<IR::Actor_Instance*>& combine = merge_data->combine_actors[instance];
 #ifdef DEBUG_OPTIMIZATION_MERGE
 	std::cout << "Combine actors:";
 	for (auto c : combine) {
 		std::cout << " " << c->get_name();
+	}
+	std::cout << std::endl;
+	sched_cond_merge* scm = merge_data->scm[instance];
+	std::cout << "All actors included:";
+	for (auto x : scm->fusioned) {
+		std::cout << " " << x->get_name();
 	}
 	std::cout << std::endl;
 #endif
@@ -2567,8 +2790,9 @@ static void determine_edge_relations(
 					std::vector<Channel_Dependency> rel;
 					if (data->edge_relations.contains(in)) {
 						for (auto x : data->edge_relations[in]) {
-							Channel_Dependency y = x;
-							x.value = x.value * m.second / highest_cons;
+							if (highest_cons != 0) {
+								x.value = x.value * m.second / highest_cons;
+							}
 							rel.push_back(x);
 						}
 						data->edge_relations[m.first] = rel;
@@ -2583,7 +2807,7 @@ static void determine_edge_relations(
 			for (auto a : inst->get_actor()->get_actions()) {
 				bool not_covered = false;
 				for (auto t : a->get_out_buffers()) {
-					if ((t.buffer_name == out->get_dst_port()) && (t.tokenrate == 0)) {
+					if ((t.buffer_name == out->get_src_port()) && (t.tokenrate == 0)) {
 						not_covered = true;
 					}
 				}
@@ -2608,7 +2832,7 @@ static void determine_edge_relations(
 			for (auto o : other_edges) {
 				Channel_Dependency c;
 				c.edge = o;
-				c.value = mp[o] / mp[out];
+				c.value = (mp[out] != 0) ? static_cast<double>(mp[o]) / mp[out] : 0.0;
 				if (data->edge_relations.contains(out)) {
 					data->edge_relations[out].push_back(c);
 				}
@@ -2890,14 +3114,17 @@ static unsigned calculate_loopsz(
 			if ((src != nullptr) && (inst->get_composit_actor() == src->get_composit_actor())) {
 				unsigned x = 0;
 				if (max) {
-					if (data->mincons[in] != 0) {
-						x = data->maxprod[in] * data->max_loopcount[src] / data->mincons[in];
+					unsigned d = (data->mincons[in] != 0) ? data->mincons[in] : data->maxcons[in];
+					if (d == 0) {
+						continue;
 					}
-					else {
-						x = data->maxprod[in] * data->max_loopcount[src] / data->maxcons[in];
-					}
+					x = data->maxprod[in] * data->max_loopcount[src] / d;
 				}
 				else {
+					if (data->maxcons[in] == 0) {
+						/* consumer never consumes from this edge -> no constraint */
+						continue;
+					}
 					x = data->minprod[in] * data->loopcount[src] / data->maxcons[in];
 				}
 #ifdef USE_MUSTPRODUCE
@@ -3019,22 +3246,7 @@ static void determine_loopcount(
 				/* must be connection to another cluster/actor outside this cluster */
 				continue;
 			}
-			auto c = data->channels[out];
-			c.size *= loopsz;
-			if (!c.channel->arrays.empty()) {
-				AST::Expression* e = c.channel->arrays.front();
-				AST::Literal *l = dynamic_cast<AST::Literal*>(e->child);
-				assert(l != nullptr);
-				l->literal = std::to_string(c.size);
-			}
-			else {
-				AST::Expression* e = new AST::Expression{};
-				AST::Literal* l = new AST::Literal{};
-				l->literal = std::to_string(c.size);
-				e->child = l;
-				c.channel->arrays.push_back(e);
-			}
-			data->channels[out] = c;
+			data->channels[out].size *= loopsz;
 		}
 	}
 #ifdef DEBUG_OPTIMIZATION_MERGE
@@ -3076,7 +3288,7 @@ static void determine_guaranteed_production(
 	std::vector<IR::Actor_Instance*> cluster,
 	Merge_Data* data)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	for (auto inst : cluster) {
 		/* Ignore channels that are input! */
@@ -3207,22 +3419,10 @@ static void determine_guaranteed_production(
 
 		/* now adjust channel sizes based on guarantee */
 		for (auto in : channels_to_adjust) {
-			auto channel = data->channels[in];
-			channel.size = c->get_FIFO_size();
-			if (channel.channel->arrays.empty()) {
-				AST::Expression* e = new AST::Expression{};
-				AST::Literal* l = new AST::Literal{};
-				l->literal = std::to_string(channel.size);
-				e->child = l;
-				channel.channel->arrays.push_back(e);
+			if (inputs.contains(in)) {
+				continue;
 			}
-			else {
-				auto x = channel.channel->arrays.front();
-				auto l = dynamic_cast<AST::Literal*>(x->child);
-				assert(l != nullptr);
-				l->literal = std::to_string(channel.size);
-			}
-			data->channels[in] = channel;
+			data->channels[in].size = (in->get_specified_size() != 0) ? in->get_specified_size() : c->get_FIFO_size();
 		}
 	}
 
@@ -3233,19 +3433,6 @@ static void determine_guaranteed_production(
 	}
 	std::cout << std::endl;
 #endif
-}
-
-static bool all_parents_added(
-	Merge_Data* merge_data,
-	sched_cond_merge* x)
-{
-	for (auto p : x->parent_sched_cond_fusion) {
-		auto s = merge_data->sched_cond_fusion_id[p];
-		if (!s->added) {
-			return false;
-		}
-	}
-	return true;
 }
 
 static void get_do_code(
@@ -3349,47 +3536,66 @@ static void get_do_code(
 #endif
 }
 
+static void create_channel_vars(
+	IR::Composit_Actor* composit,
+	Merge_Data* merge_data)
+{
+	AST::Actor* ast = composit->get_ast()->actor;
+	for (auto& entry : merge_data->channels) {
+		Channel_Variable& cv = entry.second;
+		create_channel(cv, entry.first);
+		ast->vars.push_back(cv.channel);
+		if (cv.index_r != nullptr) {
+			ast->vars.push_back(cv.index_r);
+		}
+		ast->vars.push_back(cv.sz);
+	}
+}
+
 static void perform_merge(
 	unsigned core,
 	std::vector<IR::Actor_Instance*> cluster,
 	IR::Dataflow_Network* dpn)
 {
-	IR::Composit_Actor* composit = new IR::Composit_Actor{"merge_" + std::to_string(cluster.front()->get_cluster_id()),
+	if (cluster.size() <= 1) {
+		/* nothing to do, a single node or no node cannot be merged! */
+		return;
+	}
+
+	std::string composit_name = "merge_" + std::to_string(cluster.front()->get_cluster_id());
+	IR::Composit_Actor* composit = new IR::Composit_Actor{composit_name,
 														  cluster.front()->get_cluster_id(), core };
 	Merge_Data* merge_data = new Merge_Data{};
 	dpn->add_composit_actor(composit);
 
-	unsigned loopsz = 0;
-
-	for (auto inst : cluster) {
-		inst->set_composit_actor(composit);
-		inst->set_deleted();
-		if (inst->get_sched_loop_bound() > loopsz) {
-			loopsz = inst->get_sched_loop_bound();
-		}
+	for (auto inst = cluster.begin(); inst != cluster.end(); ++inst) {
+		(*inst)->set_composit_actor(composit);
+		(*inst)->set_deleted();
 	}
-	if (loopsz == 0) {
-		loopsz = 128; // No intention behind this number, picked by chance
-	}
-	composit->set_sched_loop_bound(loopsz);
 
 	std::set<std::string> used_ports;
 	std::set<IR::Actor_Instance*> outputs;
-	for (auto inst : cluster) {
+	for (auto inst: cluster) {
+		if (inst->get_source()) {
+			composit->set_source();
+		}
+		if (inst->get_sink()) {
+			composit->set_sink();
+		}
 		// mark connections as deleted. Check for outside connections, add them.
 		for (auto e : inst->get_in_edges()) {
 			if (e->is_deleted()) {
 				continue;
 			}
 			IR::Actor_Instance_Base* src_inst = e->get_source();
-			if ((dynamic_cast<IR::Actor_Instance*>(src_inst) != nullptr) &&
+			if ((dynamic_cast<IR::Actor_Instance*>(src_inst) == nullptr) ||
 				(dynamic_cast<IR::Actor_Instance*>(src_inst)->get_composit_actor() != composit))
 			{
+				std::string portname = e->get_dst_port();
 				/* Edge must be adjusted */
 				Connector con;
 				con.first = e->get_dst_id();
-				con.second = e->get_dst_port();
-				std::string portname = con.second;
+				con.second = portname;
 				if (used_ports.contains(portname)) {
 					unsigned count = 0;
 					std::string q = con.second + "_";
@@ -3398,11 +3604,15 @@ static void perform_merge(
 					}
 					portname = q + std::to_string(count);
 				}
+
 				merge_data->new_ports[con] = portname;
 				used_ports.insert(portname);
-				IR::Edge n{ src_inst, composit, composit->get_name(), portname, e->get_src_id(), e->get_src_port() };
+
+
+				IR::Edge* n = new IR::Edge{ src_inst, composit, composit_name, portname, e->get_src_id(), e->get_src_port()};
 				auto q = dpn->add_edge(n);
 				composit->add_in_edge(q);
+
 				if (dynamic_cast<IR::Actor_Instance*>(src_inst) != nullptr) {
 					dynamic_cast<IR::Actor_Instance*>(src_inst)->add_out_edge(q);
 				}
@@ -3417,15 +3627,15 @@ static void perform_merge(
 				continue;
 			}
 			IR::Actor_Instance_Base* sink_inst = e->get_sink();
-			if ((dynamic_cast<IR::Actor_Instance*>(sink_inst) != nullptr) &&
+			if ((dynamic_cast<IR::Actor_Instance*>(sink_inst) == nullptr) ||
 				(dynamic_cast<IR::Actor_Instance*>(sink_inst)->get_composit_actor() != composit))
 			{
 				outputs.insert(inst);
+				std::string portname = e->get_src_port();
 				/* Edge must be adjusted */
 				Connector con;
 				con.first = e->get_src_id();
-				con.second = e->get_src_port();
-				std::string portname = con.second;
+				con.second = portname;
 				if (used_ports.contains(portname)) {
 					unsigned count = 0;
 					std::string q = con.second + "_";
@@ -3436,7 +3646,7 @@ static void perform_merge(
 				}
 				merge_data->new_ports[con] = portname;
 				used_ports.insert(portname);
-				IR::Edge n{ composit, sink_inst , e->get_dst_id(), e->get_dst_port(), composit->get_name(), portname };
+				IR::Edge* n = new IR::Edge{ composit, sink_inst , e->get_dst_id(), e->get_dst_port(), composit_name, portname };
 				auto q = dpn->add_edge(n);
 				composit->add_out_edge(q);
 				if (dynamic_cast<IR::Actor_Instance*>(sink_inst) != nullptr) {
@@ -3462,7 +3672,7 @@ static void perform_merge(
 #endif
 
 	determine_edge_relations(cluster, dpn, merge_data);
-	determine_channel_sizes(composit, merge_data, cluster);
+	determine_channel_sizes(merge_data, cluster);
 
 #ifdef USE_MUSTPRODUCE
 	determine_must_produce(cluster, outputs, dpn, merge_data);
@@ -3472,6 +3682,29 @@ static void perform_merge(
 	determine_max_loopcount(cluster, merge_data);
 	determine_guaranteed_production(cluster, merge_data);
 	determine_required_freechecks(cluster, merge_data);
+
+	for (auto inst = cluster.rbegin(); inst != cluster.rend(); ++inst) {
+		find_combine_actor(*inst, merge_data, merge_data->combine_actors[*inst]);
+		merge_data->scm[*inst] = merge_data->sched_cond_fusion[*inst];
+	}
+
+	create_channel_vars(composit, merge_data);
+
+	unsigned loopsz = 0;
+	for (auto inst = cluster.begin(); inst != cluster.end(); ++inst) {
+		unsigned l = (*inst)->get_sched_loop_bound() / merge_data->loopcount[*inst];
+		if (l > loopsz) {
+			loopsz = l;
+		}
+	}
+	if (loopsz == 0) {
+		loopsz = 128; // No intention behind this number, picked by chance
+	}
+	composit->set_sched_loop_bound(loopsz);
+
+#ifdef DEBUG_OPTIMIZATION_MERGE
+	std::cout << "Composite loop bound: " << composit->get_sched_loop_bound() << std::endl;
+#endif
 
 	/* First generate */
 	for (auto inst : cluster) {
@@ -3583,101 +3816,62 @@ static void find_clusters(
 	unsigned core,
 	std::vector<std::vector<IR::Actor_Instance*>>& clusters)
 {
-	std::set<IR::Actor_Instance*> all;
+	std::set<IR::Actor_Instance_Base*> all;
 	for (auto inst : dpn->get_actor_instances()) {
+		if (inst->is_deleted()) {
+			continue;
+		}
 		if (inst->get_mapping() == core) {
 			all.insert(inst);
 		}
 	}
 
-	std::set<IR::Actor_Instance_Base*> c;
-	std::vector<IR::Actor_Instance*> neighbour;
-	neighbour.push_back(*all.begin());
-	while (!neighbour.empty()) {
-		auto tmp = neighbour.begin();
-		IR::Actor_Instance* inst = *tmp;
-		neighbour.erase(tmp);
+	std::vector<std::vector<IR::Actor_Instance_Base*>> components;
+	Scheduling::determine_connected_clusters(all, components);
 
-		if (!inst->is_deleted()) {
-			c.insert(inst);
+	for (auto sorted_cluster : components) {
+		unsigned id = cluster_counter++;
+		for (auto x : sorted_cluster) {
+			dynamic_cast<IR::Actor_Instance*>(x)->set_cluster_id(id);
 		}
-
-		for (auto in : inst->get_in_edges()) {
-			if (in->is_deleted()) {
-				continue;
-			}
-			if (in->get_source()->get_mapping() == core) {
-				auto t = dynamic_cast<IR::Actor_Instance*>(in->get_source());
-				if (all.contains(t)) {
-					neighbour.push_back(t);
-					all.erase(t);
-				}
-			}
-		}
-		for (auto out : inst->get_out_edges()) {
-			if (out->is_deleted()) {
-				continue;
-			}
-			if (out->get_sink()->get_mapping() == core) {
-				auto t = dynamic_cast<IR::Actor_Instance*>(out->get_sink());
-				if (all.contains(t)) {
-					neighbour.push_back(t);
-					all.erase(t);
-				}
-			}
-		}
-		
-		if (neighbour.empty()) {
-			unsigned id = cluster_counter++;
-			for (auto x : c) {
-				dynamic_cast<IR::Actor_Instance*>(x)->set_cluster_id(id);
-			}
-			std::vector<IR::Actor_Instance_Base*> sorted_cluster;
-			Scheduling::topology_sort_inst(c, dpn, sorted_cluster);
 
 #if CHECK_TOPOLOGY_SORT
-			/* little check .... */
-			for (auto x : sorted_cluster) {
-				bool found = false;
-				auto n = dynamic_cast<IR::Actor_Instance*>(x);
-				for (auto y : sorted_cluster) {
-					auto m = dynamic_cast<IR::Actor_Instance*>(y);
-					if (x == y) {
-						found = true;
-						continue;
+		/* little check .... */
+		for (auto x : sorted_cluster) {
+			bool found = false;
+			auto n = dynamic_cast<IR::Actor_Instance*>(x);
+			for (auto y : sorted_cluster) {
+				auto m = dynamic_cast<IR::Actor_Instance*>(y);
+				if (x == y) {
+					found = true;
+					continue;
+				}
+				if (!found) {
+					if (m->is_predecessor(n)) {
+						std::cout << "ERROR: not sorted." << std::endl;
 					}
-					if (!found) {
-						if (m->is_predecessor(n)) {
-							std::cout << "ERROR: not sorted." << std::endl;
-						}
-					}
-					else {
-						if (n->is_predecessor(m)) {
-							std::cout << "ERROR: not sorted." << std::endl;
-							exit(1);
-						}
+				}
+				else {
+					if (n->is_predecessor(m)) {
+						std::cout << "ERROR: not sorted." << std::endl;
+						exit(1);
 					}
 				}
 			}
-#endif
-			std::vector<IR::Actor_Instance*> result;
-			for (auto l : sorted_cluster) {
-				result.push_back(dynamic_cast<IR::Actor_Instance*>(l));
-			}
-			clusters.push_back(result);
-			c.clear();
-			if (!all.empty()) {
-				neighbour.push_back(*all.begin());
-			}
 		}
+#endif
+		std::vector<IR::Actor_Instance*> result;
+		for (auto l : sorted_cluster) {
+			result.push_back(dynamic_cast<IR::Actor_Instance*>(l));
+		}
+		clusters.push_back(result);
 	}
 }
-
 
 void Merge_Optimization::core_merge(
 	IR::Dataflow_Network* dpn)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 #ifdef DEBUG_OPTIMIZATION_MERGE
 	std::cout << "Start of Optimization" << std::endl;
@@ -3701,5 +3895,123 @@ void Merge_Optimization::core_merge(
 #endif
 			perform_merge(core, cluster, dpn);
 		}
+	}
+}
+
+static void read_clusters(
+	std::vector<std::vector<IR::Actor_Instance*>>& clusters,
+	IR::Dataflow_Network* dpn)
+{
+	xml_document<char>* doc = new xml_document<char>;
+	Config* c = Config::getInstance();
+
+	{
+		std::ifstream config_file(c->get_merge_config_file(), std::ifstream::in);
+		if (config_file.fail()) {
+			throw Converter_Exception{ "Cannot open the file " + c->get_merge_config_file() };
+		}
+		std::stringstream merge_config_buffer;
+		merge_config_buffer << config_file.rdbuf();
+		std::string str_to_parse = merge_config_buffer.str();
+		char* buffer = new char[str_to_parse.size() + 1];
+		std::size_t length = str_to_parse.copy(buffer, str_to_parse.size() + 1);
+		buffer[length] = '\0';
+		doc->parse<0>(buffer);
+	}
+
+	if (strcmp(doc->first_node()->name(), "Merge") != 0) {
+		// something is wrong here, root node should be merge ... bail out
+		throw Converter_Exception{ "Content of Merge Config file erroneous.\n" };
+	}
+
+	unsigned config_cluster_counter = 0;
+	for (const rapidxml::xml_node<>* sub_node = doc->first_node()->first_node();
+		sub_node; sub_node = sub_node->next_sibling())
+	{
+		if (strcmp(sub_node->name(), "Cluster") == 0) {
+			std::vector<std::string> cluster;
+			for (auto sub_sub_node = sub_node->first_node();
+				sub_sub_node; sub_sub_node = sub_sub_node->next_sibling())
+			{
+				if (strcmp(sub_sub_node->name(), "Node") == 0) {
+					for (auto attributes = sub_sub_node->first_attribute();
+						attributes; attributes = attributes->next_attribute())
+					{
+						if (strcmp(attributes->name(), "name") == 0) {
+							cluster.push_back(attributes->value());
+						}
+						else {
+							throw Converter_Exception{ "Content of Merge Config file erroneous.\n" };
+						}
+					}
+				}
+			}
+			std::set<IR::Actor_Instance_Base*> x;
+			unsigned prev_core_id = 99999;
+			for (auto c : cluster) {
+				IR::Actor_Instance* inst = dpn->get_actor_instance(c);
+				if (inst == nullptr) {
+					throw Converter_Exception{ "Content of Merge Config file erroneous, cannot find actor instance " + c + ".\n" };
+				}
+				x.insert(inst);
+				if (prev_core_id == 99999) {
+					prev_core_id = inst->get_mapping();
+				}
+				else if (prev_core_id != inst->get_mapping()) {
+					throw Converter_Exception{ "Content of Merge Config file erroneous, nodes not mapped to same core.\n" };
+				}
+			}
+
+			if (!Scheduling::is_connected(x)) {
+				std::string msg = "Content of Merge Config file erroneous, cluster is not connected:";
+				for (auto i : x) {
+					msg += " " + i->get_name();
+				}
+				throw Converter_Exception{ msg + "\n" };
+			}
+
+			std::vector<IR::Actor_Instance_Base*> sorted_cluster;
+			Scheduling::topology_sort_inst(x, sorted_cluster);
+			std::vector<IR::Actor_Instance*> result;
+			for (auto l : sorted_cluster) {
+				result.push_back(dynamic_cast<IR::Actor_Instance*>(l));
+			}
+
+			unsigned id = config_cluster_counter++;
+			for (auto inst : result) {
+				inst->set_cluster_id(id);
+			}
+
+			clusters.push_back(result);
+		}
+		else {
+			throw Converter_Exception{ "Content of Merge Config file erroneous.\n" };
+		}
+	}
+}
+
+void Merge_Optimization::config_merge(
+	IR::Dataflow_Network* dpn)
+{
+#ifdef DEBUG_OPTIMIZATION_MERGE
+	std::cout << "Start of Optimization" << std::endl;
+#endif
+
+	std::vector<std::vector<IR::Actor_Instance*>> clusters;
+	read_clusters(clusters, dpn);
+
+	for (auto cluster : clusters) {
+		if (cluster.empty()) {
+			continue;
+		}
+		unsigned core = cluster.front()->get_mapping();
+#ifdef DEBUG_OPTIMIZATION_MERGE
+		std::cout << "Cluster on core " << core << ":";
+		for (auto inst : cluster) {
+			std::cout << " " << inst->get_name();
+		}
+		std::cout << std::endl;
+#endif
+		perform_merge(core, cluster, dpn);
 	}
 }

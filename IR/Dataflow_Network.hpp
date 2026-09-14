@@ -16,7 +16,8 @@ namespace IR {
 	 */
 	class Dataflow_Network {
 		std::vector<Actor_Instance*> actor_instances;
-		std::vector<Edge> edges;
+		std::vector<Edge*> edges;
+		std::map<std::string, Edge*> edge_name_map;
 
 		/* Map actor to it's class path (path in the source directory) */
 		std::map<std::string, std::string> actors_class_path;
@@ -52,27 +53,44 @@ namespace IR {
 		}
 
 		Actor_Instance* get_actor_instance(std::string name) {
-			return name_instance_map[name];
+			auto it = name_instance_map.find(name);
+			return (it != name_instance_map.end()) ? it->second : nullptr;
 		}
 
 		Actor_Instance* get_actor_instance_by_id(unsigned id) {
-			return id_instance_map[id];
+			auto it = id_instance_map.find(id);
+			return (it != id_instance_map.end()) ? it->second : nullptr;
 		}
 
-		Edge* add_edge(Edge& e) {
+		Edge* add_edge(Edge* e) {
 			edges.push_back(e);
-			return &(edges.back());
+			edge_name_map[e->get_name()] = e;
+			return e;
 		}
 
-		void set_edges(std::vector<Edge> e) {
+		Edge* get_edge(std::string name) {
+			if (edge_name_map.contains(name)) {
+				return edge_name_map[name];
+			}
+			else {
+				return nullptr;
+			}
+		}
+
+		void set_edges(std::vector<Edge*> e) {
+			edge_name_map.clear();
+			edges.clear();
 			edges = e;
+			for (auto it = edges.begin(); it != edges.end(); ++it) {
+				edge_name_map[(*it)->get_name()] = (*it);
+			}
 		}
 
 		std::vector<Actor_Instance*>& get_actor_instances(void) {
 			return actor_instances;
 		}
 
-		std::vector<Edge>& get_edges(void) {
+		std::vector<Edge*>& get_edges(void) {
 			return edges;
 		}
 

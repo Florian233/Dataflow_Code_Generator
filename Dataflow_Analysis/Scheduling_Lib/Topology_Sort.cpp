@@ -1,214 +1,172 @@
 #include "Scheduling_Lib.hpp"
 #include <set>
-#include <algorithm>
+#include <map>
+#include <vector>
+#include <string>
 #include "Optimization_Phase2/Optimization_Phase2.hpp"
 
-//find the starting point for the sort/search, ideally the actors without input buffers
-//otherwise just pick an actor instance as it shouldn't matter if there are cycles in the network.
-// This will just cause some initial overhead until the global scheduler advanced to the actual
-// actor instances that have to be fired first to get the whole process going.
-// The deleted flag is ignored as it doesn't matter, it is just a bit more computation time here.
-// Actor composition: We rely on the fact the the network is not changed, only cluster ids are set in
-// the actor instances. This way we can still find the init actors easily and avoid adding cycles by merging/clustering.
-static void find_starting_point(
-	std::vector<IR::Actor_Instance_Base*>& process_list,
-	std::set<IR::Actor_Instance_Base*>& unprocessed_list)
+struct Cmp_By_Name {
+	bool operator()(IR::Actor_Instance_Base* a, IR::Actor_Instance_Base* b) const {
+		std::string na = a->get_name();
+		std::string nb = b->get_name();
+		if (na != nb) {
+			return na < nb;
+		}
+		return a < b;
+	}
+};
+
+static void topology_sort_base(
+	const std::set<IR::Actor_Instance_Base*>& nodes,
+	std::vector<IR::Actor_Instance_Base*>& sorted)
 {
-	std::vector<IR::Actor_Instance_Base*> tmp = process_list;
-	// This would be sufficient if the networks always have nodes with only outgoing edges that are
-	// the predecessors of all others, but it there are cycles and so on this is not always given.
-	// Hence, we need this unprocessed list to keep track whether some nodes are not covered.
-	for (auto it = tmp.begin(); it != tmp.end(); ++it) {
-		unsigned in = 0;
-		for (auto inedge : (*it)->get_in_edges()) {
-			if (!inedge->get_feedback()) {
-				++in;
+	std::map<IR::Actor_Instance_Base*, unsigned> in_degree;
+	for (IR::Actor_Instance_Base* node : nodes) {
+		unsigned degree = 0;
+		for (IR::Edge* edge : node->get_in_edges()) {
+			if (!edge->get_feedback() && nodes.contains(edge->get_source())) {
+				++degree;
 			}
 		}
-		if (in == 0) {
-			unprocessed_list.erase(*it);
-			process_list.push_back(*it);
+		in_degree[node] = degree;
+	}
+
+	std::set<IR::Actor_Instance_Base*, Cmp_By_Name> ready;
+	std::set<IR::Actor_Instance_Base*> remaining(nodes.begin(), nodes.end());
+	for (IR::Actor_Instance_Base* node : nodes) {
+		if (in_degree[node] == 0) {
+			ready.insert(node);
 		}
 	}
 
-	if (process_list.empty()) {
-		// Found no actor instances that have no input, just pick one to start with
-		// this might not be ideal, as cycle by cycle are processed leading to a mapping that might not be ideal
-		process_list.push_back(tmp[0]);
-		unprocessed_list.erase(tmp[0]);
+	while (!remaining.empty()) {
+		if (ready.empty()) {
+			IR::Actor_Instance_Base* pick = nullptr;
+			for (IR::Actor_Instance_Base* node : remaining) {
+				if (pick == nullptr ||
+					in_degree[node] < in_degree[pick] ||
+					(in_degree[node] == in_degree[pick] && Cmp_By_Name()(node, pick))) {
+					pick = node;
+				}
+			}
+			ready.insert(pick);
+		}
+
+		IR::Actor_Instance_Base* node = *ready.begin();
+		ready.erase(ready.begin());
+		remaining.erase(node);
+		sorted.push_back(node);
+
+		for (IR::Edge* edge : node->get_out_edges()) {
+			if (edge->get_feedback()) {
+				continue;
+			}
+			IR::Actor_Instance_Base* sink = edge->get_sink();
+			if (!remaining.contains(sink)) {
+				continue;
+			}
+			unsigned& degree = in_degree[sink];
+			if (degree > 0 && --degree == 0) {
+				ready.insert(sink);
+			}
+		}
 	}
 }
 
-static bool all_predecessors_covered(
-	IR::Actor_Instance_Base* inst,
-	std::vector<std::string>& sorted_actors)
+static IR::Actor_Instance_Base* find_cycle(
+	std::map<IR::Actor_Instance_Base*, IR::Actor_Instance_Base*>& parent,
+	IR::Actor_Instance_Base* x)
 {
-	for (auto it = inst->get_in_edges().begin(); it != inst->get_in_edges().end(); ++it) {
-		auto x = std::find(sorted_actors.begin(), sorted_actors.end(), (*it)->get_source()->get_name());
-		if (x == sorted_actors.end()) {
-			return false;
-		}
+	while (parent[x] != x) {
+		parent[x] = parent[parent[x]];
+		x = parent[x];
 	}
-	return true;
+	return x;
 }
 
-static bool all_predecessors_covered_inst(
-	IR::Actor_Instance_Base* inst,
-	std::set<IR::Actor_Instance_Base*>& all,
-	std::vector<IR::Actor_Instance_Base*>& sorted_actors)
+static void combine_cc(
+	std::map<IR::Actor_Instance_Base*, IR::Actor_Instance_Base*>& parent,
+	IR::Actor_Instance_Base* a,
+	IR::Actor_Instance_Base* b)
 {
-	for (auto it = inst->get_in_edges().begin(); it != inst->get_in_edges().end(); ++it) {
-		if ((*it)->get_feedback()) {
-			continue;
-		}
-		auto q = (*it)->get_source();
-		if (!all.contains(q)) {
-			continue;
-		}
-		auto x = std::find(sorted_actors.begin(), sorted_actors.end(), q);
-		if (x == sorted_actors.end()) {
-			return false;
-		}
-	}
-	return true;
+	parent[find_cycle(parent, a)] = find_cycle(parent, b);
 }
 
-//FIXME: This has to be synced with the version below, this is buggy for subsets and also has bad performance
+static void find_connected_clusters(
+	const std::set<IR::Actor_Instance_Base*>& nodes,
+	std::vector<std::set<IR::Actor_Instance_Base*>>& clusters)
+{
+	std::map<IR::Actor_Instance_Base*, IR::Actor_Instance_Base*> parent;
+	for (IR::Actor_Instance_Base* n : nodes) {
+		parent[n] = n;
+	}
+
+	for (IR::Actor_Instance_Base* n : nodes) {
+		for (IR::Edge* e : n->get_out_edges()) {
+			if (e->is_deleted() || e->get_feedback()) {
+				continue;
+			}
+			if (nodes.contains(e->get_sink())) {
+				combine_cc(parent, n, e->get_sink());
+			}
+		}
+	}
+
+	std::map<IR::Actor_Instance_Base*, std::set<IR::Actor_Instance_Base*>> buckets;
+	for (IR::Actor_Instance_Base* n : nodes) {
+		buckets[find_cycle(parent, n)].insert(n);
+	}
+	for (auto& entry : buckets) {
+		clusters.push_back(entry.second);
+	}
+}
+
+void Scheduling::determine_connected_clusters(
+	const std::set<IR::Actor_Instance_Base*>& nodes,
+	std::vector<std::vector<IR::Actor_Instance_Base*>>& components)
+{
+	std::vector<std::set<IR::Actor_Instance_Base*>> clusters;
+	find_connected_clusters(nodes, clusters);
+
+	for (auto& component : clusters) {
+		std::vector<IR::Actor_Instance_Base*> sorted;
+		topology_sort_base(component, sorted);
+		components.push_back(sorted);
+	}
+}
+
+bool Scheduling::is_connected(
+	const std::set<IR::Actor_Instance_Base*>& nodes)
+{
+	std::vector<std::set<IR::Actor_Instance_Base*>> clusters;
+	find_connected_clusters(nodes, clusters);
+	return clusters.size() <= 1;
+}
+
 void Scheduling::topology_sort(
 	std::set<std::string>& actors,
 	IR::Dataflow_Network* dpn,
 	std::vector<std::string>& sorted_actors)
 {
-	std::vector<IR::Actor_Instance_Base*> process_list;
-	std::set<IR::Actor_Instance_Base*> unprocessed_list; // This list excludes process_list!
-	unprocessed_list.insert(dpn->get_actor_instances().begin(), dpn->get_actor_instances().end());
-	unprocessed_list.insert(dpn->get_composit_actors().begin(), dpn->get_composit_actors().end());
-	if (dpn->get_inputs().empty()) {
-		find_starting_point(process_list, unprocessed_list);
-	}
-	else {
-		for (auto t = dpn->get_inputs().begin(); t != dpn->get_inputs().end(); ++t) {
-			unprocessed_list.erase(*t);
-			process_list.push_back(*t);
+	std::set<IR::Actor_Instance_Base*> nodes;
+	for (const auto& name : actors) {
+		IR::Actor_Instance* inst = dpn->get_actor_instance(name);
+		if (inst != nullptr) {
+			nodes.insert(inst);
 		}
 	}
 
-	while (!process_list.empty()) {
-		IR::Actor_Instance_Base* actor = *process_list.begin();
+	std::vector<IR::Actor_Instance_Base*> sorted;
+	topology_sort_base(nodes, sorted);
 
-		std::string name = actor->get_name();
-
-		// If this actor is one of those that shall be sorted, add it to the list
-		if (actors.find(name) != actors.end()) {
-			//We can find a composit actor that is already in the sorted list
-			//I think it is best to move it to the back of the sorted list as finding it
-			//again means that it has an input edge that can only now deliver inputs but it
-			//has been scheduled before already, might not work properly in case of cycles
-			//but this cannot be excluded, too little information in the network
-			auto x = std::find(sorted_actors.begin(), sorted_actors.end(), name);
-			if (x != sorted_actors.end()) {
-				sorted_actors.erase(x);
-			}
-			sorted_actors.push_back(name);
-		}
-
-		for (auto it = actor->get_out_edges().begin();
-			it != actor->get_out_edges().end(); ++it)
-		{
-			if ((*it)->get_feedback()) {
-				/* ignore feedback loops here */
-				continue;
-			}
-
-			IR::Actor_Instance* a = dynamic_cast<IR::Actor_Instance*>((*it)->get_sink());
-
-			if (all_predecessors_covered(a, sorted_actors) || process_list.empty()) {
-				process_list.push_back(a);
-			}
-			if (unprocessed_list.find(a) != unprocessed_list.end()) {
-				unprocessed_list.erase(a);
-			}
-		}
-
-		process_list.erase(process_list.begin());
-
-		if (process_list.empty() && !unprocessed_list.empty()) {
-			// there is some part of the network that wasn't covered so far.
-			// simply add some node of the unprocessed_list to the process_list and continue
-			process_list.push_back(*unprocessed_list.begin());
-			unprocessed_list.erase(unprocessed_list.begin());
-		}
+	for (auto* n : sorted) {
+		sorted_actors.push_back(n->get_name());
 	}
 }
 
 void Scheduling::topology_sort_inst(
-	std::set<IR::Actor_Instance_Base*>&actors,
-	IR::Dataflow_Network * dpn,
-	std::vector<IR::Actor_Instance_Base*>&sorted_actors)
+	std::set<IR::Actor_Instance_Base*>& actors,
+	std::vector<IR::Actor_Instance_Base*>& sorted_actors)
 {
-	std::vector<IR::Edge*> process_list;
-	std::set<IR::Actor_Instance_Base*> unprocessed_list; // This list excludes process_list!
-	unprocessed_list.insert(actors.begin(), actors.end());
-	if (dpn->get_inputs().empty()) {
-		find_starting_point(sorted_actors, unprocessed_list);
-	}
-	else {
-		for (auto t = dpn->get_inputs().begin(); t != dpn->get_inputs().end(); ++t) {
-			unprocessed_list.erase(*t);
-			sorted_actors.push_back(*t);
-		}
-	}
-
-	std::set<IR::Actor_Instance_Base*> covered;
-	for (auto s : sorted_actors) {
-		covered.insert(s);
-	}
-
-	for (auto s : sorted_actors) {
-		for (auto out : s->get_out_edges()) {
-			if (out->get_feedback()) {
-				continue;
-			}
-			process_list.push_back(out);
-		}
-	}
-
-	while (!process_list.empty()) {
-		IR::Edge* edge = *process_list.begin();
-		process_list.erase(process_list.begin());
-
-		IR::Actor_Instance_Base* sink = edge->get_sink();
-
-		if (all_predecessors_covered_inst(sink, actors, sorted_actors) && unprocessed_list.contains(sink)) {
-			sorted_actors.push_back(sink);
-			if (unprocessed_list.find(sink) != unprocessed_list.end()) {
-				unprocessed_list.erase(sink);
-			}
-
-			for (auto it = sink->get_out_edges().begin();
-				it != sink->get_out_edges().end(); ++it)
-			{
-				if ((*it)->get_feedback()) {
-					/* ignore feedback loops here */
-					continue;
-				}
-				process_list.push_back(*it);
-			}
-
-		}
-
-		if (process_list.empty() && !unprocessed_list.empty()) {
-			// there is some part of the network that wasn't covered so far.
-			// simply add some node of the unprocessed_list to the process_list and continue
-			IR::Actor_Instance_Base* n = *unprocessed_list.begin();
-			unprocessed_list.erase(unprocessed_list.begin());
-			sorted_actors.push_back(n);
-			for (auto out : n->get_out_edges()) {
-				if (out->get_feedback()) {
-					continue;
-				}
-				process_list.push_back(out);
-			}
-		}
-	}
+	topology_sort_base(actors, sorted_actors);
 }

@@ -19,7 +19,7 @@ void Mapping::read_mapping(
 {
 	std::map<std::string, unsigned> instance_core_map;
 	xml_document<char>* doc = new xml_document<char>;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	{
 		std::ifstream network_file(path, std::ifstream::in);

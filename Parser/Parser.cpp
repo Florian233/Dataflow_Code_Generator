@@ -1255,7 +1255,7 @@ static void parse_unaryArithOperator(
 	if ((current.type == Lexer::Operator) && (current.str == "++")) {
 		keller.push_back(Symbol{ .term_str = "++", .type = Terminal, .term_type = Special });
 	}
-	if ((current.type == Lexer::Operator) && (current.str == "--")) {
+	else if ((current.type == Lexer::Operator) && (current.str == "--")) {
 		keller.push_back(Symbol{ .term_str = "--", .type = Terminal, .term_type = Special });
 	}
 	else {
@@ -1315,7 +1315,7 @@ static void parse_unaryOp(
 		((current.type == Lexer::Delimiter2) && ((current.str == ";") || (current.str == ",") || (current.str == "."))) ||
 		((current.type == Lexer::Keyword) && ((current.str == "do") || (current.str == "var") ||
 			(current.str == "end") || (current.str == "endif") || (current.str == "endaction") ||
-			(current.str == "endinitalize") || (current.str == "then") || (current.str == "else") ||
+			(current.str == "endinitialize") || (current.str == "then") || (current.str == "else") ||
 			(current.str == "endif"))) ||
 		(current.type == Lexer::Identifier) || is_op(current))
 	{
@@ -1382,7 +1382,7 @@ static void parse_ExpressionList(
 		/* nothing to do, follow set, empty */
 	}
 	else {
-		parser_error(current, ", ) : ] end endaction endinitalize var do");
+		parser_error(current, ", ) : ] end endaction endinitialize var do");
 	}
 }
 
@@ -1442,7 +1442,7 @@ static void parse_SingleConstCalcList(
 		((current.type == Lexer::Operator) && (current.str == "==>")) ||
 		((current.type == Lexer::Delimiter2) && (current.str == ",")) ||
 		((current.type == Lexer::Keyword) && ((current.str == "guard") || (current.str == "var") || (current.str == "do") || (current.str == "end") ||
-			(current.str == "endaction") || (current.str == "endinitalize"))))
+			(current.str == "endaction") || (current.str == "endinitialize"))))
 	{
 		builder.end_Expression();
 		/* Nothing to do, follow set, empty */
@@ -1494,7 +1494,7 @@ static void parse_SingleExpressionAdd(
 	else if (((current.type == Lexer::Delimiter) && ((current.str == ":") || (current.str == "]") || (current.str == ")"))) ||
 		((current.type == Lexer::Delimiter2) && ((current.str == ",") || (current.str == ";") || (current.str == "."))) ||
 		((current.type == Lexer::Keyword) && ((current.str == "do") || (current.str == "var") || (current.str == "end") ||
-			(current.str == "endaction") || (current.str == "endinitalize") ||
+			(current.str == "endaction") || (current.str == "endinitialize") ||
 			(current.str == "then") || (current.str == "else") || (current.str == "endif"))) ||
 		is_unaryop(current) ||
 		is_op(current))
@@ -1520,7 +1520,7 @@ static void parse_SingleExpressionList(
 		(current.type == Lexer::Delimiter2) ||
 		((current.type == Lexer::Keyword) &&
 			((current.str == "do") || (current.str == "var") || (current.str == "end") ||
-			 (current.str == "endaction") || (current.str == "endinitalize") ||
+			 (current.str == "endaction") || (current.str == "endinitialize") ||
 			 (current.str == "then") || (current.str == "else") || (current.str == "endif"))) ||
 		is_unaryop(current))
 	{
@@ -1811,7 +1811,7 @@ static void parse_Index(
 	}
 	else if (((current.type == Lexer::Delimiter) && ((current.str == ":") || (current.str == "]"))) ||
 		((current.type == Lexer::Delimiter2) && ((current.str == ",") || (current.str == ".") || (current.str == ";"))) ||
-		((current.type == Lexer::Keyword) && ((current.str == "do") || (current.str == "var") || (current.str == "end") || (current.str == "endaction") || (current.str == "endinitalize"))) ||
+		((current.type == Lexer::Keyword) && ((current.str == "do") || (current.str == "var") || (current.str == "end") || (current.str == "endaction") || (current.str == "endinitialize"))) ||
 		is_unaryop(current) ||
 		is_op(current))
 	{
@@ -2425,7 +2425,7 @@ static void parse_Statements(
 	}
 	else if ((current.type == Lexer::Keyword) &&
 		((current.str == "end") || (current.str == "endif") || (current.str == "endwhile") || (current.str == "else") ||
-			(current.str == "endforeach") || (current.str == "endprocedure") || (current.str == "endaction") || (current.str == "endinitalize")))
+			(current.str == "endforeach") || (current.str == "endprocedure") || (current.str == "endaction") || (current.str == "endinitialize")))
 	{
 		/* nothing to do, follow set, empty */
 	}
@@ -2919,7 +2919,7 @@ AST::AST_Root* Parser_Class::parse(void)
 	current = lexer->next();
 	keller.push_back(Symbol{ .type = Nonterminal, .nonterm_type = Start });
 
-	while (current.str != Lexer::END) {
+	while (current.str != Lexer::END && !keller.empty()) {
 
 		//std::cout << "Current token: " << current.str << std::endl;
 
@@ -3091,13 +3091,18 @@ AST::AST_Root* Parser_Class::parse(void)
 		}
 	}
 
-	if (keller.empty()) {
-		return builder.get_ast();
+	if (!keller.empty()) {
+		std::cout << "Parser in state: ";
+		print_nonterm_type(keller.back().nonterm_type);
+		std::cout << " but no further tokens can be provided by the lexer." << std::endl;
+		exit(4);
+	}
+	else if (current.str != Lexer::END) {
+		std::cout << "Parsing completed but the input still contains unexpected trailing tokens.\n";
+		std::cout << "Current token: " << current.str << std::endl;
+		exit(4);
 	}
 	else {
-		std::cout << "Lexer cannot provide any tokens but keller still contains " << keller.size() << " elements.\n";
-		std::cout << "Current element: ";
-		print_nonterm_type(keller.back().nonterm_type);
-		exit(4);
+		return builder.get_ast();
 	}
 }

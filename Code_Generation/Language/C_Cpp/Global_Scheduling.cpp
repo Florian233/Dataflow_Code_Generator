@@ -13,11 +13,11 @@ static std::string basic_non_preemptive(
 	std::map<std::string, std::string> schedulable_instances)
 {
 	std::string result;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	if (c->get_list_scheduling() && !map_data->actor_sharing) {
 		for (unsigned i = 0; i < c->get_cores(); ++i) {
-			result.append("std::vector<Actor *> core" + std::to_string(i) + "_actors;\n");
+			result.append("static std::vector<Actor *> core" + std::to_string(i) + "_actors;\n");
 		}
 	}
 
@@ -50,9 +50,11 @@ static std::string basic_non_preemptive(
 		}
 
 		// we only have to generate one global scheduling routine as it is the same for all cores
-		result.append("void global_scheduler(void) {\n");
+		result.append("static void global_scheduler(void) {\n");
 		result.append("\twhile (1) {\n");
 		for (auto it = actors.begin(); it != actors.end(); ++it) {
+			auto sched_class_it = schedulable_instances.find(*it);
+			std::string sched_class = (sched_class_it != schedulable_instances.end()) ? sched_class_it->second : *it;
 			std::string tmp;
 			ABI_ATOMIC_TEST_SET(c, tmp, *it, "");
 			result.append("\t\tif(!" + tmp + ") { \n");
@@ -66,10 +68,10 @@ static std::string basic_non_preemptive(
 			}
 			else {
 				if (c->get_static_alloc()) {
-					result.append("\t\t\t" + *it + "_schedule(&" + *it + ");\n");
+					result.append("\t\t\t" + c->get_globals_prefix() + sched_class + "_schedule(&" + c->get_globals_prefix() + *it + ");\n");
 				}
 				else {
-					result.append("\t\t\t" + *it + "_schedule(" + *it + ");\n");
+					result.append("\t\t\t" + c->get_globals_prefix() + sched_class + "_schedule(" + c->get_globals_prefix() + *it + ");\n");
 				}
 			}
 			ABI_ATOMIC_CLEAR(c, tmp, *it, "\t\t\t");
@@ -85,7 +87,7 @@ static std::string basic_non_preemptive(
 	}
 	else {
 		for (unsigned core = 0; core < c->get_cores(); ++core) {
-			result.append("void schedule_core" + std::to_string(core) + "(void) {\n");
+			result.append("static void schedule_core" + std::to_string(core) + "(void) {\n");
 
 			std::set<std::string> actors;
 			Scheduling::find_actors_for_core(core, dpn, actors);
@@ -105,10 +107,10 @@ static std::string basic_non_preemptive(
 			if (c->get_list_scheduling()) {
 				for (auto it = maybe_sorted.begin(); it != maybe_sorted.end(); ++it) {
 					if (c->get_static_alloc()) {
-						result.append("\tcore" + std::to_string(core) + "_actors.push_back(&" + *it + ");\n");
+						result.append("\tcore" + std::to_string(core) + "_actors.push_back(&" + c->get_globals_prefix() + *it + ");\n");
 					}
 					else {
-						result.append("\tcore" + std::to_string(core) + "_actors.push_back(" + *it + ");\n");
+						result.append("\tcore" + std::to_string(core) + "_actors.push_back(" + c->get_globals_prefix() + *it + ");\n");
 					}
 				}
 			}
@@ -121,20 +123,22 @@ static std::string basic_non_preemptive(
 			}
 			else {
 				for (auto it = maybe_sorted.begin(); it != maybe_sorted.end(); ++it) {
+					auto sched_class_it = schedulable_instances.find(*it);
+					std::string sched_class = (sched_class_it != schedulable_instances.end()) ? sched_class_it->second : *it;
 					if (c->get_target_language() == Target_Language::cpp) {
 						if (c->get_static_alloc()) {
-							result.append("\t\t" + *it + ".schedule();\n");
+							result.append("\t\t" + c->get_globals_prefix() + *it + ".schedule();\n");
 						}
 						else {
-							result.append("\t\t" + *it + "->schedule();\n");
+							result.append("\t\t" + c->get_globals_prefix() + *it + "->schedule();\n");
 						}
 					}
 					else {
 						if (c->get_static_alloc()) {
-							result.append("\t\t" + *it + "_schedule(&" + *it + ");\n");
+							result.append("\t\t" + c->get_globals_prefix() + sched_class + "_schedule(&" + c->get_globals_prefix() + *it + ");\n");
 						}
 						else {
-							result.append("\t\t" + *it + "_schedule(" + *it + ");\n");
+							result.append("\t\t" + c->get_globals_prefix() + sched_class + "_schedule(" + c->get_globals_prefix() + *it + ");\n");
 						}
 					}
 				}

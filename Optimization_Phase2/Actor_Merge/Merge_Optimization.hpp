@@ -6,4 +6,6 @@ namespace Merge_Optimization {
 
 	void core_merge(IR::Dataflow_Network* dpn);
 
+	void config_merge(IR::Dataflow_Network* dpn);
+
 }

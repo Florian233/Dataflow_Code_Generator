@@ -55,12 +55,4 @@ namespace AST_Transform {
 	void replace_identifiers_stmt(
 		std::vector<AST::Statement*>& statements,
 		std::map<std::string, std::string>& replacements);
-
-	void remove_sizecheck(
-		std::vector<AST::Expression*>& expressions,
-		std::string port);
-
-	void remove_freecheck(
-		std::vector<AST::Expression*>& expressions,
-		std::string port);
 }

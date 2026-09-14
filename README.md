@@ -138,6 +138,8 @@ The following CAL features are not supported:
 ## Command Line Options
 The code generator provides the following command line options:
 
+Please use the -h or --help option to print the help message that also displays all command line options. The following list is not necessarily complete and up to date, please check the help message for the most recent list of command line options.
+
 ### Common
 
 * -h / --help : Print the help message that also displays all command line options
@@ -152,38 +154,26 @@ The code generator provides the following command line options:
 ### Communication Channels
 * -s \<number\> : The default size of the buffers. This size is used if no optimization step determines another size or the size of the channel is given in the XDF file.
 
-### OpenMP
-* --omp_tasking : Uses OpenMP tasking instead of std::thread for parallel execution of the actors/global schedulers. This feature is rather experimental currently.
-
 ### Mapping
 * -c \<number\> : Specifiy the number of cores to use. This shall determine the number of clusters/partitions created during the mapping process.
-* --map=(all|lft|random)
+* --map=(all|random)
   * all: Map all actor instances to all cores. This is the default. This options doesn't lead to a proper mapping. Instead the generated global scheduling routines for each core can execute all actor instances. To ensure execution of an actor instance only once at a time atomics are used (only if more than one core is used). Atomics deacrease the performance significantly!
   * random: Distribute actor instances round-robin amoung the cores, list of actor instances is not sorted, order unknown.
-  * lft: Different methods based on the last finish time of actor instances, can take weights into consideration.
 * --map_file \<file\> : Uses the mapping for file. Ignores -c and --map. The file has to contain an XML description of the partitioning in the following form: \<Mapping\> \<Cluster\> \<Node name="some_actor_instance_name"/\>...\</Cluster\>\<multiple cluster containing multiple nodes\>\</Mapping\>   
 * --output_nodes_file \<file\>: Uses the nodes defined in the file as output nodes of the network, this is where the computation of the last finish times starts. The file has to contain an XML description in the following form: \<Mapping\> \<Output\> \<Node name="some_actor_instance_name"\>...\</Output\>\</Mapping\>
 * --input_nodes_file \<file\>: Uses the nodes defined in the file as input nodes of the network, this is where the computation of the earliest start times starts. The file has to contain an XML description in the following form: \<Mapping\> \<Input\> \<Node name="some_actor_instance_name"\>...\</Input\>\</Mapping\>
-* --map_weights \<file\>: Uses the weights defined in the file as weights for the actor instances for mapping. The file has to contain an XML description in the following form: \<Mapping\> \<Weights\> \<Weight name="some_actor_instance_name" Value=X\>...\</Weights\>\</Mapping\>
 
 ### Scheduling
 * --topology_sort : Use topology sorting for the list of actor instances before generating the global scheduler. This might lead to less calls of local schedulers that return without peforming any firings of the corresponding actor instance. With a topologically sorted list for scheduling the actor instances might be executed in the order or the token flow.
 * --schedule=(non_preemptive|round_robin)
   * non_preemptive : Use non-preemptive scheduling. This is the default. Actor instances are executed as long as they can fire, only after all possible firings are done they return to global scheduling.
   * round_robin: Use round-robin scheduling. Actor instances can only fire one action, then they return to the global scheduler.
-* --list_schedule : Use a list for scheduling instead of hard-coded order of local scheduler calls in the code. This produces more flexible code, but has no specific purpose.
+* --list_scheduling : Use a list for scheduling instead of hard-coded order of local scheduler calls in the code. This produces more flexible code, but has no specific purpose.
 * --bound_sched \<number\>: Execute the local scheduler a bounded number of times at maximum before returning.
-* --bound_sched_file <file>: Use bound loops for local scheduling for each actor instance.
-				
+
 ### Optimizations
 * --prune_unconnected : Remove unconnected channels from actors instances and generate separate code for them. Otherwise the unconnected channels are set to nullptr for the constructor parameters. This feature is rather experimental and not properly tested! Reading tokens from ports without an attached channel are replaced by using variables initalized with zero or uninitialized arrays.
 * --opt_sched : Fetch channel sizes before entering the local scheduler loop and use this values for scheduling. This avoids reading the channel sizes during each scheduler iteration, in the worst-case several times.
-* --opt_cmerge: Merge adjacent actor instances on the same core.
-* --no-pe: Omit prolog and epilog split in actor merge.
-
-### Verbosity
-* --verbose=<Option>
-* --silent: No output at all except runtime.
 
 ## Future Work
 * Improved Mapping and Scheduling Strategies

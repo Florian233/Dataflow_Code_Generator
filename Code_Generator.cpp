@@ -18,9 +18,16 @@ using namespace std;
 
 Config* Config::instance = 0;
 static bool silent = false;
+static char* get_next_value(int argc, char* argv[], int& i) {
+	if (i + 1 >= argc) {
+		std::cout << "Error: Option " << argv[i] << " requires a value but none was given." << std::endl;
+		exit(1);
+	}
+	return argv[++i];
+}
 
 static void parse_command_line_input(int argc, char* argv[]) {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	bool mapping_set{ false };
 	bool schedule_set{ false };
 	for (int i = 1; i < argc; i++) {
@@ -34,39 +41,43 @@ static void parse_command_line_input(int argc, char* argv[]) {
 				"	--orcc			   ORCC compatibility, required to use ORCC projects.\n"
 				"   --cmake            Generate CMake File for the generated code.\n"
 				"   --static_alloc     Make allocations static, don't use new operator.\n"
-				"   --abi=<stdc|stdc++>      Generate C or C++ code, default is C++.\n"
+				"   --abi=<stdc|stdc++|rtos>      Generate C or C++ code, default is C++; stdc is only partially supported, might required manual adjustments.\n"
+				"   --prefix=<str>     Global symbol prefix.\n"
+				"   --subdir=<path>    RTOS makefile for subdirectory inclusion.\n"
 				"\nCommunication Channels:\n"
 				"	-s <number>        Specify the default size of the FIFOs.\n"
+				"   --size_file <file> Specify the size of the FIFOs for each channel in a file; if not defined -s is used as default.\n"
 				"\nOpenMP:\n"
 				"	--omp_tasking      Use OpenMP tasking for the parallel execution of the global schedulers.\n"
 				"\nMapping:\n"
 				"	-c <number>        Specify the number of cores to use.\n"
-				"	--map=(all|(weighted-)*lft|random)\n"
+				"	--map=(all|random)\n"
 				"                 all: Map all actor instances to all cores (default).\n"
-				"                 lft: Interpret network as a scheduling graph, schedule/map nodes with earliest last-finish-time first in round-robin fashin to the cores.\n"
-				"                 balanced-lft: As lft but try to balance the nodes equally amoung the cores, fill one core before advancing to the next.\n"
-				"                 balanced-round-robin-lft: As balanced-lft but assign nodes to cores in round-robin fashion for cores. \n"
-				"                 level-range-lft: assign all nodes with a last-finish-time in a certain range to each core.\n"
-				"                 connected-lft: Like balanced-lft but assign connected nodes preferably to the same core, pick core with least unmapped predecessors.\n"
-				"                 connected-round-robin-balanced-lft: Like balanced-round-robin-lft but assigned conntected nodes preferably to the same core.\n"
-				"                                                     Pick core that has closes LFT. Advance to next core after each path until all actors are mapped.\n"
-				"                 connected-balanced-lft: Like connected-round-robin-balanced-lft but fill one core before advancing to the next."
+				"                 random: Map actor instances to cores randomly.\n"
 				"   --map_file <file>  Uses the mapping from <file>, ignores -c and --map.\n"
 				"   --output_nodes_file <file> Provide output nodes as a file, avoids autodetection of output nodes as this might fail due to feedback loops.\n"
 				"   --input_nodes_file <file> Provide input nodes as a file, avoids autodetection of input nodes as this might fail due to feedback loops.\n"
-				"   --map_weights <file> Read weights for each actor for <file>, by defaults the weights are number of consumed and produced tokens.\n"
+				"   --feedback_edges <file> Provide feedback edges as a file, avoids autodetection of feedback edges which might fail for certain topologies.\n"
 				"\nScheduling:\n"
 				"   --topology_sort    Use topology sorted list for scheduling.\n"
 				"   --schedule=(non_preemptive|round_robin)\n"
 				"                 non_preemtive: Use non-preemptive scheduling strategy (default).\n"
 				"                 round_robin: Use round-robin scheduling strategy.\n"
-				"   --list_schedule    Use a list for scheduling instead of hard-coded scheduler.\n"
+				"   --list_scheduling  Use a list for scheduling instead of hard-coded scheduler.\n"
 				"   --bound_sched <number>      Use bound loops for local scheduling with given number of tries.\n"
 				"   --bound_sched_file <file>   Use bound loops for local scheduling for each actor instance.\n"
+				"\nRTOS Mapping:\n"
+				"   --mutex    Use mutex to protect schedulability check.\n"
+				"   --atomics  Use atomics to protect schedulability check.\n"
+				"   --rtos=<basic|counting|schedcheck> RTOS mapping strategy.\n"
+				"   --release=<timespan> Timespan in ns between two releases of source actors.\n"
+				"   --deadline=<timespan> Timespan the task can take to finish after release.\n"
+				"   --cycles=<number> Number of cycles for the local scheduling loop, only relevant for RTOS mapping. Default is one.\n"
 				"\nOptimizations:\n"
-				"	--prune_unconnected Remove unconnected channels from actors, otherwise they are set to NULL.\n"
+				"   --prune_unconnected Remove unconnected channels from actors, otherwise they are set to NULL.\n"
 				"   --opt_sched         Use optimized local scheduling.\n"
 				"   --opt_cmerge        Merge adjacent actor instances on the same core.\n"
+				"   --opt_config <file> Merge actor instances based on the config file.\n"
 				"   --no-pe             Omit prolog and epilog split in actor merge.\n"
 				"\nVerbosity:\n"
 				"   --verbose=(all, reader, ir, classify, opt1, opt2, map, code-gen).\n"
@@ -74,19 +85,19 @@ static void parse_command_line_input(int argc, char* argv[]) {
 			exit(0);
 		}
 		else if (strcmp(argv[i], "-w") == 0) {
-			c->set_target_dir(argv[++i]);
+			c->set_target_dir(get_next_value(argc, argv, i));
 		}
 		else if (strcmp(argv[i], "-s") == 0) {
-			c->set_FIFO_size(static_cast<unsigned int>(atoi(argv[++i])));
+			c->set_FIFO_size(static_cast<unsigned int>(atoi(get_next_value(argc, argv, i))));
 		}
 		else if (strcmp(argv[i], "-d") == 0) {
-			c->set_source_dir(argv[++i]);
+			c->set_source_dir(get_next_value(argc, argv, i));
 		}
 		else if (strcmp(argv[i], "-n") == 0) {
-			c->set_network_file(argv[++i]);
+			c->set_network_file(get_next_value(argc, argv, i));
 		}
 		else if (strcmp(argv[i], "-c") == 0) {
-			c->set_cores(static_cast<unsigned int>(atoi(argv[++i])));
+			c->set_cores(static_cast<unsigned int>(atoi(get_next_value(argc, argv, i))));
 		}
 		else if (strcmp(argv[i], "--orcc") == 0) {
 			c->set_orcc_compat();
@@ -96,6 +107,14 @@ static void parse_command_line_input(int argc, char* argv[]) {
 		}
 		else if (strcmp(argv[i], "--static_alloc") == 0) {
 			c->set_static_alloc();
+		}
+		else if (strncmp(argv[i], "--prefix=", 9) == 0) {
+			std::string prefix{ argv[i] + 9 };
+			c->set_globals_prefix(prefix);
+		}
+		else if (strncmp(argv[i], "--subdir=", 9) == 0) {
+			std::string subdir{ argv[i] + 9 };
+			c->set_rtos_subdir(subdir);
 		}
 		else if (strncmp(argv[i], "--abi=", 6) == 0) {
 			std::string strat{ argv[i] + 6 };
@@ -107,23 +126,60 @@ static void parse_command_line_input(int argc, char* argv[]) {
 				c->set_target_language(Target_Language::c);
 				c->set_target_ABI(Target_ABI::stdc);
 			}
+			else if ((strat == "rtos") || (strat == "RTOS")) {
+				c->set_target_language(Target_Language::c);
+				c->set_target_ABI(Target_ABI::rtos);
+			}
 			else {
 				std::cout << "Cannot detect target ABI and language for code generation." << std::endl;
 				exit(1);
 			}
 		}
+		else if (strcmp(argv[i], "--mutex") == 0) {
+			c->set_use_mutex();
+		}
+		else if (strcmp(argv[i], "--atomics") == 0) {
+			c->set_use_atomics();
+		}
+		else if (strncmp(argv[i], "--rtos=", 7) == 0) {
+			if (strcmp(argv[i] + 7, "basic") == 0) {
+				c->set_rtos_strategy(RTOS_Strategy::basic);
+			}
+			else if (strcmp(argv[i] + 7, "counting") == 0) {
+				c->set_rtos_strategy(RTOS_Strategy::counting);
+			}
+			else if (strcmp(argv[i] + 7, "schedcheck") == 0) {
+				c->set_rtos_strategy(RTOS_Strategy::schedcheck);
+			}
+			else {
+				std::cout << "Error: Unknown RTOS mapping strategy " << argv[i] << std::endl;
+				exit(1);
+			}
+		}
+		else if (strncmp(argv[i], "--release=", 10) == 0) {
+			c->set_release(static_cast<unsigned int>(atoi(argv[i] + 10)));
+		}
+		else if (strncmp(argv[i], "--deadline=", 11) == 0) {
+			c->set_deadline(static_cast<unsigned int>(atoi(argv[i] + 11)));
+		}
+		else if (strncmp(argv[i], "--cycles=", 9) == 0) {
+			c->set_rtos_sched_cycles(static_cast<unsigned int>(atoi(argv[i] + 9)));
+		}
 		else if (strcmp(argv[i], "--map_file") == 0) {
-			c->set_mapping_file(argv[++i]);
+			c->set_mapping_file(get_next_value(argc, argv, i));
 			mapping_set = true;
 		}
+		else if (strcmp(argv[i], "--size_file") == 0) {
+			c->set_channel_size_file(get_next_value(argc, argv, i));
+		}
+		else if (strcmp(argv[i], "--feedback_edges") == 0) {
+			c->set_feedback_edges_file(get_next_value(argc, argv, i));
+		}
 		else if (strcmp(argv[i], "--output_nodes_file") == 0) {
-			c->set_output_nodes_file(argv[++i]);
+			c->set_output_nodes_file(get_next_value(argc, argv, i));
 		}
 		else if (strcmp(argv[i], "--input_nodes_file") == 0) {
-			c->set_input_nodes_file(argv[++i]);
-		}
-		else if (strcmp(argv[i], "--map_weights") == 0) {
-			c->set_node_weights_file(argv[++i]);
+			c->set_input_nodes_file(get_next_value(argc, argv, i));
 		}
 		else if (strncmp(argv[i], "--map=", 6) == 0) {
 			std::string strat{argv[i] + 6};
@@ -134,54 +190,6 @@ static void parse_command_line_input(int argc, char* argv[]) {
 			else if (strat == "random") {
 				c->set_random_mapping();
 				mapping_set = true;
-			}
-			else if (strat.ends_with("lft")) {
-				if (strat.starts_with("weighted-")) {
-					c->set_mapping_weights();
-					strat.erase(0, strat.find("-") + 1);
-				}
-				if (strat == "lft") {
-					c->set_lft_mapping();
-					mapping_set = true;
-				}
-				else if (strat == "balanced-lft") {
-					c->set_balanced_mapping();
-					c->set_lft_mapping();
-					mapping_set = true;
-				}
-				else if (strat == "balanced-round-robin-lft") {
-					c->set_balanced_mapping();
-					c->set_lft_mapping();
-					c->set_rr_mapping();
-					mapping_set = true;
-				}
-				else if (strat == "level-range-lft") {
-					c->set_mapping_level();
-					c->set_lft_mapping();
-					mapping_set = true;
-				}
-				else if (strat == "connected-lft") {
-					c->set_mapping_connected();
-					c->set_lft_mapping();
-					mapping_set = true;
-				}
-				else if (strat == "connected-balanced-lft") {
-					c->set_mapping_connected();
-					c->set_balanced_mapping();
-					c->set_lft_mapping();
-					mapping_set = true;
-				}
-				else if (strat == "connected-round-robin-balanced-lft") {
-					c->set_balanced_mapping();
-					c->set_mapping_connected();
-					c->set_lft_mapping();
-					c->set_rr_mapping();
-					mapping_set = true;
-				}
-				else {
-					std::cout << "Error: Unknown mapping strategy " << argv[i] << std::endl;
-					exit(1);
-				}
 			}
 			else {
 				std::cout << "Error: Unknown mapping strategy " << argv[i] << std::endl;
@@ -209,10 +217,10 @@ static void parse_command_line_input(int argc, char* argv[]) {
 			c->set_topology_sort();
 		}
 		else if (strcmp(argv[i], "--bound_sched") == 0) {
-			c->set_bound_local_sched_loops(static_cast<unsigned int>(atoi(argv[++i])));
+			c->set_bound_local_sched_loops(static_cast<unsigned int>(atoi(get_next_value(argc, argv, i))));
 		}
 		else if (strcmp(argv[i], "--bound_sched_file") == 0) {
-			c->set_bound_sched_loops_file(argv[++i]);
+			c->set_bound_sched_loops_file(get_next_value(argc, argv, i));
 		}
 		else if (strcmp(argv[i], "--omp_tasking") == 0) {
 			c->set_omp_tasking();
@@ -228,7 +236,11 @@ static void parse_command_line_input(int argc, char* argv[]) {
 		}
 		else if (strcmp(argv[i], "--opt_cmerge") == 0) {
 			c->set_optimize_core_merge();
-			}
+		}
+		else if (strcmp(argv[i], "--opt_config") == 0) {
+			c->set_optimize_config_merge();
+			c->set_merge_config_file(get_next_value(argc, argv, i));
+		}
 		else if (strncmp(argv[i], "--verbose=", 10) == 0) {
 			std::string lvl{argv[i] + 10};
 			if (lvl == "all") {
@@ -304,15 +316,11 @@ static void parse_command_line_input(int argc, char* argv[]) {
 		}
 		c->set_sched_non_preemptive();
 	}
-	if ((c->get_target_ABI() == Target_ABI::stdc) && (c->get_cores() != 1)) {
-		std::cout << "stdc ABI only allows usage of one core!" << std::endl;
-		exit(1);
-	}
 }
 
 
 int main(int argc, char* argv[]) {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	parse_command_line_input(argc, argv);
 
@@ -352,34 +360,64 @@ int main(int argc, char* argv[]) {
 	else if (c->get_random_mapping()) {
 		std::cout << "Random." << std::endl;
 	}
-	else if (c->get_lft_mapping()) {
-		if (c->get_mapping_weights()) {
-			std::cout << "weighted-";
-		}
-		if (c->get_mapping_connected() && c->get_balanced_mapping() && c->get_rr_mapping()) {
-			std::cout << "connected-round-robin-balanced-lft" << std::endl;
-		}
-		else if (c->get_mapping_connected() && c->get_balanced_mapping()) {
-			std::cout << "connected-balanced-lft" << std::endl;
-		}
-		else if (c->get_mapping_connected()) {
-			std::cout << "connected-lft" << std::endl;
-		}
-		else if (c->get_balanced_mapping() && c->get_rr_mapping()) {
-			std::cout << "balanced-round-robin-lft" << std::endl;
-		}
-		else if (c->get_balanced_mapping()) {
-			std::cout << "balanced-lft" << std::endl;
-		}
-		else if (c->get_mapping_level()) {
-			std::cout << "level-range-lft" << std::endl;
-		}
-		else {
-			std::cout << "lft" << std::endl;
-		}
-	}
 	else if (c->is_map_file()) {
 		std::cout << "Read from XML file." << std::endl;
+	}
+
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		std::cout << "Generating code for RTOS." << std::endl;
+		std::cout << "Mapping Strategy: ";
+		if (c->get_rtos_strategy() == RTOS_Strategy::basic) {
+			std::cout << "Basic" << std::endl;
+		}
+		else if (c->get_rtos_strategy() == RTOS_Strategy::counting) {
+			std::cout << "Counting" << std::endl;
+		}
+		else if (c->get_rtos_strategy() == RTOS_Strategy::schedcheck) {
+			std::cout << "Schedcheck" << std::endl;
+		}
+		if (c->get_use_mutex()) {
+			std::cout << "Using Mutex to protect notify decision.\n";
+		}
+		if (c->get_use_atomics()) {
+			std::cout << "Using Atomics to protect notify decision.\n";
+		}
+		if (c->get_deadline() != 0) {
+			std::cout << "Deadline: " << c->get_deadline() << std::endl;
+		}
+		else {
+			std::cout << "No deadline set." << std::endl;
+		}
+		if (c->get_release()!= 0) {
+			std::cout << "Release: " << c->get_release() << std::endl;
+		}
+		else {
+			std::cout << "No release time set." << std::endl;
+		}
+		if (!c->get_globals_prefix().empty()) {
+			std::cout << "Globals prefix: " << c->get_globals_prefix() << std::endl;
+		}
+		if (!c->get_rtos_subdir().empty()) {
+			std::cout << "Subdirectory: " << c->get_rtos_subdir() << std::endl;
+		}
+
+		if (c->get_use_mutex() && c->get_use_atomics()) {
+			std::cout << "Atomics and Mutex cannot be combined." << std::endl;
+			exit(54);
+		}
+
+		if (c->get_orcc_compat()) {
+			std::cout << "ORCC compatibility not supported for RTOS." << std::endl;
+			exit(55);
+		}
+		if (c->get_omp_tasking()) {
+			std::cout << "OMP Tasking not supported for RTOS." << std::endl;
+			exit(56);
+		}
+		if (c->get_cmake()) {
+			std::cout << "CMake generation not supported for RTOS. Makefile is generated by default." << std::endl;
+			exit(57);
+		}
 	}
 
 	if ((c->get_target_ABI() == Target_ABI::stdc) && (c->get_cores() > 1)) {
@@ -389,6 +427,10 @@ int main(int argc, char* argv[]) {
 	if ((c->get_target_language() == Target_Language::c) && (c->get_list_scheduling())) {
 		std::cout << "List scheduling not supported for C ...exiting." << std::endl;
 		exit(92);
+	}
+	if (c->get_optimize_core_merge() && c->get_optimize_config_merge()) {
+		std::cout << "Core merge and config merge optimizations cannot be combined." << std::endl;
+		exit(93);
 	}
 
 	const auto start{ std::chrono::steady_clock::now() };

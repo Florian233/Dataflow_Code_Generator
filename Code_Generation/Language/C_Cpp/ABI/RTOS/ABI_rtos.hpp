@@ -5,7 +5,7 @@
 #include "IR/Dataflow_Network.hpp"
 
 
-namespace ABI_stdc {
+namespace ABI_rtos {
 	using Header = std::string;
 	using Source = std::string;
 	using Impl_Type = std::string;
@@ -68,10 +68,17 @@ namespace ABI_stdc {
 		std::string channel);
 	std::string channel_free(
 		std::string channel);
+
 	std::string channel_register_read(
 		std::string channel,
 		std::string callback,
 		std::string arg);
+	std::string channel_read_notification(
+		std::string channel);
+	std::string channel_write_notification(
+		std::string channel);
+	std::string channel_write_notification_nonotify(
+		std::string channel);
 
 	std::string add_constructor_code(
 		std::string actor_class_name);

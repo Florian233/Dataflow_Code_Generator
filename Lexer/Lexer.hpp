@@ -44,7 +44,7 @@ namespace Lexer {
 		Token read_delimiter2(char first_character, unsigned token_line, unsigned token_start);
 	public:
 
-		Lexer(std::string _s) : str{ _s } { max_index = static_cast<unsigned>(str.size() - 1); }
+		Lexer(std::string _s) : str{ _s } { max_index = str.empty() ? 0 : static_cast<unsigned>(str.size() - 1); }
 
 		Token next(void);
 

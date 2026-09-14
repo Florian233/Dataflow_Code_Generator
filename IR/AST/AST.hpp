@@ -39,7 +39,7 @@ namespace AST {
 
 		Expression(const Expression& c) {
 			brakets = c.brakets;
-			child = c.child->clone();
+			child = (c.child != nullptr) ? c.child->clone() : nullptr;
 		}
 	};
 
@@ -190,6 +190,7 @@ namespace AST {
 
 		PortPreview(const PortPreview& c) {
 			port = c.port;
+			type = c.type;
 			prev_identifier = c.prev_identifier;
 			index = (c.index != nullptr) ? new Index{ *c.index } : nullptr;
 		}
@@ -231,9 +232,9 @@ namespace AST {
 		TernaryOperator() { cond = nullptr; ifblock = nullptr; elseblock = nullptr; };
 
 		TernaryOperator(const TernaryOperator& c) {
-			cond = new Expression{ *c.cond };
-			ifblock = new Expression{ *c.ifblock };
-			elseblock = new Expression{ *c.elseblock };
+			cond = (c.cond != nullptr) ? new Expression{ *c.cond } : nullptr;
+			ifblock = (c.ifblock != nullptr) ? new Expression{ *c.ifblock } : nullptr;
+			elseblock = (c.elseblock != nullptr) ? new Expression{ *c.elseblock } : nullptr;
 		}
 	};
 
@@ -252,8 +253,8 @@ namespace AST {
 
 		Operator(const Operator& c) {
 			ops = c.ops;
-			left = c.left->clone();
-			right = c.right->clone();
+			left = (c.left != nullptr) ? c.left->clone() : nullptr;
+			right = (c.right != nullptr) ? c.right->clone() : nullptr;
 		}
 	};
 
@@ -269,8 +270,8 @@ namespace AST {
 		Generator(Generator& c) {
 			type = (c.type != nullptr) ? new Type{ *c.type } : nullptr;
 			identifier = c.identifier;
-			start = new Expression{ *c.start };
-			end = new Expression{ *c.end };
+			start = (c.start != nullptr) ? new Expression{ *c.start } : nullptr;
+			end = (c.end != nullptr) ? new Expression{ *c.end } : nullptr;
 		}
 	};
 
@@ -332,7 +333,7 @@ namespace AST {
 		IfStatement() { condition = nullptr; elseblock = nullptr; };
 
 		IfStatement(const IfStatement& c) : Statement(c) {
-			condition = new Expression{ *c.condition };
+			condition = (c.condition != nullptr) ? new Expression{ *c.condition } : nullptr;
 			for (auto x : c.ifblock) {
 				ifblock.push_back(x->clone());
 			}
@@ -393,7 +394,7 @@ namespace AST {
 		WhileStatement() { condition = nullptr; }
 
 		WhileStatement(const WhileStatement& c) {
-			condition = new Expression{ *c.condition };
+			condition = (c.condition != nullptr) ? new Expression{ *c.condition } : nullptr;
 			for (auto v : c.vars) {
 				vars.push_back(new VarDefinition{ *v });
 			}
@@ -441,7 +442,7 @@ namespace AST {
 
 		OutputChannelWriteStatement(const OutputChannelWriteStatement& c) {
 			port = c.port;
-			expr = new Expression{ *c.expr };
+			expr = (c.expr != nullptr) ? new Expression{ *c.expr } : nullptr;
 		}
 	};
 
@@ -707,7 +708,7 @@ namespace AST {
 			for (auto p : c.parameters) {
 				parameters.push_back(new Parameter{ *p });
 			}
-			expression = new Expression{ *c.expression };
+			expression = (c.expression != nullptr) ? new Expression{ *c.expression } : nullptr;
 		}
 	};
 

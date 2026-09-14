@@ -5,7 +5,6 @@
 #include "Optimization_Phase2/Optimization_Phase2.hpp"
 #include "Mapping/Mapping.hpp"
 #include "Exceptions.hpp"
-#include <set>
 
 namespace Code_Generation {
 	using Header = std::string;

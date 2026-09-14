@@ -22,9 +22,13 @@ namespace IR {
 		unsigned id;
 		unsigned loop_bound = 0;
 		unsigned mapping = 0;
+		unsigned sched_prio = 60;
 
 		std::vector<Edge*> in_edges;
 		std::vector<Edge*> out_edges;
+
+		bool is_source = false;
+		bool is_sink = false;
 
 		std::vector<Unit*> imported_symbols;
 
@@ -142,6 +146,28 @@ namespace IR {
 			output_classification = a;
 		}
 
+		unsigned get_sched_prio(void) {
+			return sched_prio;
+		}
 
+		void set_sched_prio(unsigned prio) {
+			sched_prio = prio;
+		}
+
+		void set_source(void) {
+			is_source = true;
+		}
+
+		bool get_source(void) const {
+			return is_source;
+		}
+
+		void set_sink(void) {
+			is_sink = true;
+		}
+
+		bool get_sink(void) const {
+			return is_sink;
+		}
 	};
 }

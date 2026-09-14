@@ -7,8 +7,10 @@
 #include "rapidxml-1.13/rapidxml.hpp"
 #include <algorithm>
 #include <set>
+#include <unordered_set>
 #include "Config/config.h"
 #include <filesystem>
+#include "common/include/String_Helper.h"
 using namespace rapidxml;
 
 //set for all network instance ids
@@ -60,7 +62,7 @@ static void parse_network(
 {
 	std::map<std::string, std::string> decl_parameter_map;
 	std::set<std::string> network_instances;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	//Read the name of the network first
 	if (top) {
@@ -173,10 +175,10 @@ static void parse_network(
 					}
 				}
 			}
-			IR::Edge e(dst_id, dst_port, src_id, src_port);
-			e.set_dst_network_instance_port(dst_is_instance);
-			e.set_src_network_instance_port(src_is_instance);
-			e.set_specified_size(size);
+			IR::Edge* e = new IR::Edge(dst_id, dst_port, src_id, src_port);
+			e->set_dst_network_instance_port(dst_is_instance);
+			e->set_src_network_instance_port(src_is_instance);
+			e->set_specified_size(size);
 			dpn->add_edge(e);
 		}
 		if (strcmp(sub_node->name(), "Instance") == 0) {
@@ -311,10 +313,10 @@ static void start_parsing(
 /*
 	This function checks whether there are still ports of network instances left in the list of the connections.
 */
-static bool are_network_instance_ports_present(std::vector<IR::Edge>& connections) {
+static bool are_network_instance_ports_present(std::vector<IR::Edge*>& connections) {
 	for (auto connection = connections.begin(); connection != connections.end(); ++connection) {
-		if ((connection->get_dst_network_instance_port()) ||
-			(connection->get_src_network_instance_port()))
+		if (((*connection)->get_dst_network_instance_port()) ||
+			((*connection)->get_src_network_instance_port()))
 		{
 			return true;
 		}
@@ -325,13 +327,13 @@ static bool are_network_instance_ports_present(std::vector<IR::Edge>& connection
 /*
 	This function creates a vector with all connections that are between two actors or starting at an actor and going to a network port.
 */
-static std::vector<IR::Edge> find_start_connections(IR::Dataflow_Network* dpn) {
-	std::vector<IR::Edge> return_value;
+static std::vector<IR::Edge*> find_start_connections(IR::Dataflow_Network* dpn) {
+	std::vector<IR::Edge*> return_value;
 	for (auto it = dpn->get_edges().begin(); it != dpn->get_edges().end(); ++it) {
-		if (!it->get_dst_network_instance_port() && !it->get_src_network_instance_port()) {
+		if (!(*it)->get_dst_network_instance_port() && !(*it)->get_src_network_instance_port()) {
 			return_value.push_back(*it);
 		}
-		else if (it->get_dst_network_instance_port() && !it->get_src_network_instance_port()) {
+		else if ((*it)->get_dst_network_instance_port() && !(*it)->get_src_network_instance_port()) {
 			return_value.push_back(*it);
 		}
 	}
@@ -342,32 +344,40 @@ static std::vector<IR::Edge> find_start_connections(IR::Dataflow_Network* dpn) {
 	This function connects connections that are going to a network port with another connection that are starting with the network port and combines these two to one connection.
 	This connection is added to the output along with the connections between two actors.
 */
-static std::vector<IR::Edge> connection_network_ports(
+static std::vector<IR::Edge*> connection_network_ports(
 	IR::Dataflow_Network* dpn,
-	std::vector<IR::Edge>& new_connections)
+	std::vector<IR::Edge*>& new_connections)
 {
-	std::vector<IR::Edge> return_value;
+	std::vector<IR::Edge*> return_value;
 	for (auto it = new_connections.begin(); it != new_connections.end(); ++it) {
-		if (it->get_dst_network_instance_port()) {
+		if ((*it)->get_dst_network_instance_port()) {
+			bool matched = false;
 			for (auto connec_it = dpn->get_edges().begin();
 				connec_it != dpn->get_edges().end(); ++connec_it)
 			{
-				if ((it->get_dst_id() == connec_it->get_src_id())
-					&& (it->get_dst_port() == connec_it->get_src_port()))
+				if (((*it)->get_dst_id() == (*connec_it)->get_src_id())
+					&& ((*it)->get_dst_port() == (*connec_it)->get_src_port()))
 				{
-					std::string dst_id = connec_it->get_dst_id();
-					std::string dst_port = connec_it->get_dst_port();
-					bool dst_network_instance_port = connec_it->get_dst_network_instance_port();
-					std::string src_id = it->get_src_id();
-					std::string src_port = it->get_src_port();
-					bool src_network_instance_port = it->get_src_network_instance_port();
-					unsigned specified_size = std::max(it->get_specified_size(), connec_it->get_specified_size());
-					IR::Edge e(dst_id, dst_port, src_id, src_port);
-					e.set_dst_network_instance_port(dst_network_instance_port);
-					e.set_src_network_instance_port(src_network_instance_port);
-					e.set_specified_size(specified_size);
+					std::string dst_id = (*connec_it)->get_dst_id();
+					std::string dst_port = (*connec_it)->get_dst_port();
+					bool dst_network_instance_port = (*connec_it)->get_dst_network_instance_port();
+					std::string src_id = (*it)->get_src_id();
+					std::string src_port = (*it)->get_src_port();
+					bool src_network_instance_port = (*it)->get_src_network_instance_port();
+					unsigned specified_size = std::max((*it)->get_specified_size(), (*connec_it)->get_specified_size());
+					IR::Edge* e = new IR::Edge(dst_id, dst_port, src_id, src_port);
+					e->set_dst_network_instance_port(dst_network_instance_port);
+					e->set_src_network_instance_port(src_network_instance_port);
+					e->set_specified_size(specified_size);
 					return_value.push_back(e);
+					matched = true;
 				}
+			}
+			if (!matched) {
+				std::cout << "WARNING: Network instance port " << (*it)->get_dst_id() << "."
+					<< (*it)->get_dst_port() << " has no matching internal connection; "
+					<< "dropping edge from " << (*it)->get_src_id() << "."
+					<< (*it)->get_src_port() << "." << std::endl;
 			}
 		}
 		else {
@@ -377,6 +387,69 @@ static std::vector<IR::Edge> connection_network_ports(
 	return return_value;
 }
 
+static void read_channel_sizes(IR::Dataflow_Network* dpn) {
+	Config* c = Config::getInstance();
+	std::string size_file = c->get_channel_size_file();
+	if (size_file.empty()) {
+		return;
+	}
+	xml_document<char>* doc = new xml_document<char>;
+	{
+		std::ifstream network_file(size_file, std::ifstream::in);
+		if (network_file.fail()) {
+			throw Converter_Exception{ "Cannot open the file " + size_file };
+		}
+		std::stringstream Top_network_buffer;
+		Top_network_buffer << network_file.rdbuf();
+		std::string str_to_parse = Top_network_buffer.str();
+		char* buffer = new char[str_to_parse.size() + 1];
+		std::size_t length = str_to_parse.copy(buffer, str_to_parse.size() + 1);
+		buffer[length] = '\0';
+		doc->parse<0>(buffer);
+	}
+
+	if (strcmp(doc->first_node()->name(), "Channelsizes") != 0) {
+		// something is wrong here, root node should be Channelsizes ... bail out
+		throw Converter_Exception{ "Content of Channel size file erroneous.\n" };
+	}
+
+	unsigned core = 0;
+	for (const rapidxml::xml_node<>* sub_node = doc->first_node()->first_node();
+		sub_node; sub_node = sub_node->next_sibling())
+	{
+		if (strcmp(sub_node->name(), "Channel") == 0) {
+			std::string name;
+			unsigned size = 0;
+			for (auto attributes = sub_node->first_attribute();
+				attributes; attributes = attributes->next_attribute())
+			{
+				if (strcmp(attributes->name(), "name") == 0) {
+					name = attributes->value();
+				}
+				else if (strcmp(attributes->name(), "size") == 0) {
+					size = std::stoi(attributes->value());
+				}
+				else {
+					throw Converter_Exception{ "Content of channel size file erroneous.\n" };
+				}
+			}
+			replace_all_substrings(name, ".", "_");
+			auto edge = dpn->get_edge(name);
+			if (edge) {
+				edge->set_specified_size(size);
+			}
+			else {
+				std::cout << "WARNING: Cannot find edge with name " << name << " in the network to set size." << std::endl;
+			}
+		}
+		else {
+			throw Converter_Exception{ "Content of channel size file erroneous.\n" };
+		}
+
+		++core;
+	}
+
+}
 
 /*
 	This function parses the complete network and removes all network instances and replaces them by
@@ -386,20 +459,34 @@ static std::vector<IR::Edge> connection_network_ports(
 IR::Dataflow_Network* Network_Reader::read_network(void) {
 
 	IR::Dataflow_Network* dpn = new IR::Dataflow_Network;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::string str{ c->get_network_file()};
 	start_parsing(str, c->get_source_dir(), dpn);
-	std::vector<IR::Edge> starting_point{ find_start_connections(dpn) };
+
+	std::unordered_set<IR::Edge*> current_edges(
+		dpn->get_edges().begin(), dpn->get_edges().end());
+
+	std::vector<IR::Edge*> starting_point{ find_start_connections(dpn) };
 	while (are_network_instance_ports_present(starting_point)) {
 		starting_point = connection_network_ports(dpn, starting_point);
-
+		current_edges.insert(starting_point.begin(), starting_point.end());
 	}
+
 	dpn->set_edges(starting_point);
+
+	// Remove all edges that are not part of the final set
+	for (auto e : current_edges) {
+		if (std::find(starting_point.begin(), starting_point.end(), e) == starting_point.end()) {
+			delete e;
+		}
+	}
+
+	read_channel_sizes(dpn);
 
 #ifdef DEBUG_READER_PRINT_EDGES
 	for (auto it = dpn->get_edges().begin(); it != dpn->get_edges().end(); ++it) {
-		std::cout << "Edge: " << it->get_src_id() << "." << it->get_src_port() << " to "
-			<< it->get_dst_id() << "." << it->get_dst_port() << std::endl;
+		std::cout << "Edge: " << (*it)->get_src_id() << "." << (*it)->get_src_port() << " to "
+			<< (*it)->get_dst_id() << "." << (*it)->get_dst_port() << " size: " << (*it)->get_specified_size() << std::endl;
 	}
 #endif
 

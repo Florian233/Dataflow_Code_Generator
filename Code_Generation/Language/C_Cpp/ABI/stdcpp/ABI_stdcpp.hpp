@@ -12,7 +12,7 @@ namespace ABI_stdcpp {
 
 	void init_ABI_support(IR::Dataflow_Network* dpn);
 
-	std::pair<Header, Source> generate_channel_code(bool cntrl_chan);
+	std::pair<Header, Source> generate_channel_code(void);
 
 	std::string atomic_include(void);
 	std::string atomic_var_decl(
@@ -68,4 +68,11 @@ namespace ABI_stdcpp {
 		std::string channel);
 	std::string channel_free(
 		std::string channel);
+	std::string channel_register_read(
+		std::string channel,
+		std::string callback,
+		std::string arg);
+
+	std::string add_constructor_code(
+		std::string actor_class_name);
 }

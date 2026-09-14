@@ -8,6 +8,7 @@
 #include "ABI/abi.hpp"
 #include "Converter_RVC_Cpp.hpp"
 #include <iostream>
+#include "ABI/RTOS/RTOS_Core_Sched.hpp"
 
 static std::string default_local(
 	std::map<std::string, std::vector<Scheduling::Channel_Schedule_Data> >& actions,
@@ -28,7 +29,7 @@ static std::string default_local(
 	std::string schedule_function_parameter,
 	bool no_else)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::string output{ };
 	std::string local_prefix;
 	std::string buffered_prefix = prefix;
@@ -67,10 +68,12 @@ static std::string default_local(
 				std::sort(schedulable_actions.begin(), schedulable_actions.end(), Scheduling::comparison_object{ priorities });
 			}
 			if (static_rate) {
-				std::string channel_prefetch = state_channel_access[*it];
-				replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t\t");
-				output.append(prefix + "\t\tif (" + action_schedulingCondition_map[schedulable_actions.front()] + ") {\n");
-				output.append(channel_prefetch);
+				if (!schedulable_actions.empty()) {
+					std::string channel_prefetch = state_channel_access[*it];
+					replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t\t");
+					output.append(prefix + "\t\tif (" + action_schedulingCondition_map[schedulable_actions.front()] + ") {\n");
+					output.append(channel_prefetch);
+				}
 				local_prefix = prefix + "\t\t\t";
 			}
 			else {
@@ -150,7 +153,7 @@ static std::string default_local(
 				}
 				output.append(local_prefix + "}\n");
 			}
-			if (static_rate) {
+			if (static_rate && !schedulable_actions.empty()) {
 				output.append(prefix + "\t\t}\n");
 				output.append(prefix + "\t\telse {\n");
 				if (round_robin) {
@@ -172,10 +175,12 @@ static std::string default_local(
 		}
 		if (static_rate) {
 			// We only need to check size once
-			output.append(prefix + "\tif (" + action_schedulingCondition_map[schedulable_actions.front()] + ") {\n");
-			std::string channel_prefetch = state_channel_access[""];
-			replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t");
-			output.append(channel_prefetch);
+			if (!schedulable_actions.empty()) {
+				output.append(prefix + "\tif (" + action_schedulingCondition_map[schedulable_actions.front()] + ") {\n");
+				std::string channel_prefetch = state_channel_access[""];
+				replace_all_substrings(channel_prefetch, "\t", prefix + "\t\t");
+				output.append(channel_prefetch);
+			}
 			local_prefix = prefix + "\t\t";
 		}
 		else {
@@ -248,7 +253,7 @@ static std::string default_local(
 			}
 			output.append(local_prefix + "}\n");
 		}
-		if (static_rate) {
+		if (static_rate && !schedulable_actions.empty()) {
 			output.append(prefix + "\t}\n");
 			output.append(prefix + "\telse {\n");
 			if (round_robin) {
@@ -298,7 +303,7 @@ static std::string guard_var_replacement(
 			guard.append(" && ");
 		}
 		first = false;
-		guard.append("(" + Converter_RVC_Cpp::convert_expression(e, replacement_map) + ")");
+		guard.append("(" + Converter_RVC_Cpp::convert_expression(e, replacement_map, std::map<std::string, std::string>()) + ")");
 	}
 	return guard;
 }
@@ -321,238 +326,67 @@ static std::map<std::string, std::string> get_scheduler_channel_access(
 {
 	// Map the channel read to local variable for each state if required (not in the dynamic case)
 	std::map<std::string, std::string> output;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
-	/* Only use this path for now, the other path has a bug, as it should fetch the 
-	 * the tokens only if sufficient output channel space is available.
-	 * Otherwise there must be some local buffering for the next call or some revert operation
-	 * on the channel to avoid losing the tokens.
-	 */
-	if (true || input_classification == Actor_Classification::dynamic_rate) {
-		// It is dynamic, hence, we must prefetch
-		for (auto action_it = actions.begin();
-			action_it != actions.end(); ++action_it)
+	// It is dynamic, hence, we must prefetch
+	for (auto action_it = actions.begin();
+		action_it != actions.end(); ++action_it)
+	{
+		std::map<std::string, std::string> replacement_map;
+		if (c->get_target_language() == Target_Language::c) {
+			replacement_map = replacements;
+		}
+
+		for (auto sched_data_it = action_it->second.begin();
+			sched_data_it != action_it->second.end(); ++sched_data_it)
 		{
-			std::map<std::string, std::string> replacement_map;
-			if (c->get_target_language() == Target_Language::c) {
-				replacement_map = replacements;
-			}
-
-			for (auto sched_data_it = action_it->second.begin();
-				sched_data_it != action_it->second.end(); ++sched_data_it)
-			{
-				// One scheduling data entry per accessed channel
-				unsigned index = 0;
-				if (action_guard.contains(action_it->first) && !(action_guard[action_it->first]->guards.empty())) {
-					for (auto var_it = sched_data_it->var_names.begin();
-						var_it != sched_data_it->var_names.end(); ++var_it)
-					{
-						if (sched_data_it->unused_channel) {
-							if (sched_data_it->repeat) {
-								for (unsigned i = 0; i < sched_data_it->elements; ++i) {
-									std::string r = *var_it + "[" + std::to_string(i) + "]";
-									replacement_map[r] = "0";
-								}
-							}
-							else {
-								std::string r = *var_it;
-								// Just use a dummy value if we cannot access this channel!
-								replacement_map[r] = "0";
-							}
-						}
-						else if (sched_data_it->repeat) {
-							size_t repeat_val = sched_data_it->elements / sched_data_it->var_names.size();
-							for (size_t i = 0; i < repeat_val; ++i) {
+			// One scheduling data entry per accessed channel
+			unsigned index = 0;
+			if (action_guard.contains(action_it->first) && !(action_guard[action_it->first]->guards.empty())) {
+				for (auto var_it = sched_data_it->var_names.begin();
+					var_it != sched_data_it->var_names.end(); ++var_it)
+				{
+					if (sched_data_it->unused_channel) {
+						if (sched_data_it->repeat) {
+							for (unsigned i = 0; i < sched_data_it->elements; ++i) {
 								std::string r = *var_it + "[" + std::to_string(i) + "]";
-								std::string tmp;
-								std::string offset = std::to_string(i * sched_data_it->var_names.size() + index);
-								ABI_CHANNEL_PREFETCH(c, tmp, sched_data_it->channel_name, offset)
-								std::string n = tmp;
-								replacement_map[r] = n;
+								replacement_map[r] = "0";
 							}
 						}
 						else {
 							std::string r = *var_it;
+							// Just use a dummy value if we cannot access this channel!
+							replacement_map[r] = "0";
+						}
+					}
+					else if (sched_data_it->repeat) {
+						size_t repeat_val = sched_data_it->elements / sched_data_it->var_names.size();
+						for (size_t i = 0; i < repeat_val; ++i) {
+							std::string r = *var_it + "[" + std::to_string(i) + "]";
 							std::string tmp;
-							std::string offset = std::to_string(index);
+							std::string offset = std::to_string(i * sched_data_it->var_names.size() + index);
 							ABI_CHANNEL_PREFETCH(c, tmp, sched_data_it->channel_name, offset)
 							std::string n = tmp;
 							replacement_map[r] = n;
 						}
-						++index;
-					}
-				}
-			}
-
-			std::string replaced_guard = guard_var_replacement(action_guard[action_it->first], replacement_map);
-			converted_guards[action_it->first] = replaced_guard;
-		}
-	}
-	else {
-		//Must be some classification that demands that all actions consume the same number of tokens
-		//Hence, we can load the channel data to a local variable, evaluate guards and the forward the
-		//local variable to the action
-		if (!actions_per_state.empty()) {
-			for (auto state_it = actions_per_state.begin(); state_it != actions_per_state.end(); ++state_it) {
-				for (auto action_it = state_it->second.begin(); action_it != state_it->second.end(); ++action_it) {
-					std::map<std::string, std::string> replacement_map;
-					if (c->get_target_language() == Target_Language::c) {
-						replacement_map = replacements;
-					}
-
-					for (auto sched_data_it = actions[*action_it].begin();
-						sched_data_it != actions[*action_it].end(); ++sched_data_it)
-					{
-						// One scheduling data entry per accessed channel
-						unsigned index = 0;
-						if (action_guard.contains(*action_it) && !(action_guard[*action_it]->guards.empty())) {
-							for (auto var_it = sched_data_it->var_names.begin();
-								var_it != sched_data_it->var_names.end(); ++var_it)
-							{
-								if (sched_data_it->unused_channel) {
-									if (sched_data_it->repeat) {
-										for (unsigned i = 0; i < sched_data_it->elements; ++i) {
-											std::string r = *var_it + "[" + std::to_string(i) + "]";
-											replacement_map[r] = "0";
-										}
-									}
-									else {
-										std::string r = *var_it;
-										// Just use a dummy value if we cannot access this channel!
-										replacement_map[r] = "0";
-									}
-								}
-								else if (sched_data_it->repeat) {
-									size_t repeat_val = sched_data_it->elements / sched_data_it->var_names.size();
-									for (size_t i = 0; i < repeat_val; ++i) {
-										std::string r = *var_it + "[" + std::to_string(i) + "]";
-										std::string n = sched_data_it->channel_name + "_param[" + std::to_string(i * sched_data_it->var_names.size() + index) + "]";
-										replacement_map[r] = n;
-									}
-								}
-								else {
-									if (sched_data_it->elements == 1) {
-										std::string r = *var_it;
-										std::string n = sched_data_it->channel_name + "_param";
-										replacement_map[r] = n;
-									}
-									else {
-										std::string r = *var_it;
-										std::string n = sched_data_it->channel_name + "_param[" + std::to_string(index) + "]";
-										replacement_map[r] = n;
-									}
-								}
-								++index;
-							}
-						}
-					}
-					std::string replaced_guard = guard_var_replacement(action_guard[*action_it], replacement_map);
-					converted_guards[*action_it] = replaced_guard;
-				}
-
-				std::string local_def;
-				for (auto it = actions[state_it->second.front()].begin(); it != actions[state_it->second.front()].end(); ++it) {
-					std::string tmp;
-					ABI_CHANNEL_READ(c, tmp, it->channel_name)
-					if (it->unused_channel || !it->in) {
-						continue;
-					}
-					if (it->elements == 1) {
-						local_def.append("\t" + it->type + " " + it->channel_name + "_param = " + tmp + ";\n");
 					}
 					else {
-						local_def.append("\t" + it->type + " " + it->channel_name + "_param[" + std::to_string(it->elements) + "];\n");
-						local_def.append("\tfor (unsigned i = 0; i < " + std::to_string(it->elements) + "; ++i) {" + it->channel_name + "_param[i] = " + tmp + ";}\n");
+						std::string r = *var_it;
+						std::string tmp;
+						std::string offset = std::to_string(index);
+						ABI_CHANNEL_PREFETCH(c, tmp, sched_data_it->channel_name, offset)
+						std::string n = tmp;
+						replacement_map[r] = n;
 					}
+					++index;
 				}
-#ifdef DEBUG_SCHEDULER_GENERATION
-				std::cout << "Channel prefetch code for state " << state_it->first << ":" << local_def << std::endl;
-#endif
-				output[state_it->first] = local_def;
 			}
 		}
-		else {
-			// No FSM, hence, it is the static case
-			for (auto action_it = actions.begin();
-				action_it != actions.end(); ++action_it)
-			{
-				std::map<std::string, std::string> replacement_map;
-				if (c->get_target_language() == Target_Language::c) {
-					replacement_map = replacements;
-				}
 
-				for (auto sched_data_it = action_it->second.begin();
-					sched_data_it != action_it->second.end(); ++sched_data_it)
-				{
-					// One scheduling data entry per accessed channel
-					unsigned index = 0;
-					if (action_guard.contains(action_it->first) && !(action_guard[action_it->first]->guards.empty())) {
-						for (auto var_it = sched_data_it->var_names.begin();
-							var_it != sched_data_it->var_names.end(); ++var_it)
-						{
-							if (sched_data_it->unused_channel) {
-								if (sched_data_it->repeat) {
-									for (unsigned i = 0; i < sched_data_it->elements; ++i) {
-										std::string r = *var_it + "[" + std::to_string(i) + "]";
-										replacement_map[r] = "0";
-									}
-								}
-								else {
-									std::string r = *var_it;
-									// Just use a dummy value if we cannot access this channel!
-									replacement_map[r] = "0";
-								}
-							}
-							else if (sched_data_it->repeat) {
-								size_t repeat_val = sched_data_it->elements / sched_data_it->var_names.size();
-								for (size_t i = 0; i < repeat_val; ++i) {
-									std::string r = *var_it + "[" + std::to_string(i) + "]";
-									std::string n = sched_data_it->channel_name + "_param[" + std::to_string(i * sched_data_it->var_names.size() + index) + "]";
-									replacement_map[r] = n;
-								}
-							}
-							else {
-								if (sched_data_it->elements == 1) {
-									std::string r = *var_it;
-									std::string n = sched_data_it->channel_name + "_param";
-									replacement_map[r] = n;
-								}
-								else {
-									std::string r = *var_it;
-									std::string n = sched_data_it->channel_name + "_param[" + std::to_string(index) + "]";
-									replacement_map[r] = n;
-								}
-							}
-							++index;
-						}
-					}
-				}
-				std::string replaced_guard = guard_var_replacement(action_guard[action_it->first], replacement_map);
-				converted_guards[action_it->first] = replaced_guard;
-			}
-			std::string local_def;
-			for (auto it = actions.begin()->second.begin(); it != actions.begin()->second.end(); ++it) {
-				if (it->unused_channel || !it->in) {
-					continue;
-				}
-				if (it->elements == 1) {
-					std::string tmp;
-					ABI_CHANNEL_READ(c, tmp, it->channel_name)
-					local_def.append("\t" + it->type + " " + it->channel_name + "_param = " + tmp + ";\n");
-				}
-				else {
-					std::string tmp;
-					ABI_CHANNEL_READ(c, tmp, it->channel_name)
-					local_def.append("\t" + it->type + " " + it->channel_name + "_param[" + std::to_string(it->elements) + "];\n");
-					local_def.append("\tfor (unsigned i = 0; i < " + std::to_string(it->elements) + "; ++i) {" + it->channel_name + "_param[i] = " + tmp + ";}\n");
-				}
-			}
-#ifdef DEBUG_SCHEDULER_GENERATION
-			std::cout << "Channel prefetch code:" << local_def << std::endl;
-#endif
-			output[""] = local_def;
-		}
+		std::string replaced_guard = guard_var_replacement(action_guard[action_it->first], replacement_map);
+		converted_guards[action_it->first] = replaced_guard;
 	}
+	
 
 	return output;
 }
@@ -570,9 +404,11 @@ std::string Scheduling::generate_local_scheduler(
 	std::map<std::string, std::vector< Channel_Schedule_Data>>& actions,
 	std::map<std::string, std::string> replacements,
 	unsigned scheduling_loop_bound,
-	bool no_else)
+	bool no_else,
+	bool is_source,
+	bool is_sink)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 #ifdef DEBUG_SCHEDULER_GENERATION
 	for (auto it = actions.begin(); it != actions.end(); ++it) {
@@ -606,6 +442,7 @@ std::string Scheduling::generate_local_scheduler(
 		actions_per_state[it] = sched_actions;
 	}
 
+#ifdef DEBUG_SCHEDULER_GENERATION
 	for (auto s : actions_per_state) {
 		std::cout << "Actions for state: " << s.first << ": ";
 		for (auto a : s.second) {
@@ -613,6 +450,7 @@ std::string Scheduling::generate_local_scheduler(
 		}
 		std::cout << std::endl;
 	}
+#endif
 
 	std::map<std::string, std::string> converted_guard_conditions;
 	std::map<std::string, std::string> state_channel_access = 
@@ -629,7 +467,7 @@ std::string Scheduling::generate_local_scheduler(
 		}
 	}
 
-	if (c->get_optimize_scheduling()) {
+	if (c->get_optimize_scheduling() || (c->get_target_ABI() == Target_ABI::rtos)) {
 		std::set<std::string> in_channels;
 		std::set<std::string> out_channels;
 		for (auto action_it = actions.begin(); action_it != actions.end(); ++action_it) {
@@ -666,8 +504,9 @@ std::string Scheduling::generate_local_scheduler(
 	}
 
 	if (scheduling_loop_bound != 0) {
-		sched_loop.append(prefix + "\tfor (unsigned sched_loops = 0; sched_loops < "
-			+ std::to_string(scheduling_loop_bound) + "; ++sched_loops) {\n");
+		sched_loop.append(prefix + "\tunsigned sched_loops;\n");
+		sched_loop.append(prefix + "\tfor (sched_loops = 0; sched_loops < "
+			+ std::to_string(scheduling_loop_bound / c->get_rtos_sched_cycles()) + "; ++sched_loops) {\n");
 	}
 	else {
 		sched_loop.append(prefix + "\tfor (;;) {\n");
@@ -696,7 +535,7 @@ std::string Scheduling::generate_local_scheduler(
 				if (!action_schedulingCondition_map[action_it->first].empty()) {
 					action_schedulingCondition_map[action_it->first].append(" && ");
 				}
-				if (c->get_optimize_scheduling()) {
+				if (c->get_optimize_scheduling() || (c->get_target_ABI() == Target_ABI::rtos)) {
 					action_schedulingCondition_map[action_it->first].append("(" + sched_data_it->channel_name
 						+ "_size >= " + std::to_string(sched_data_it->elements) + ")");
 					action_post_exec_map[action_it->first].append("\t"+ sched_data_it->channel_name
@@ -713,7 +552,7 @@ std::string Scheduling::generate_local_scheduler(
 				if (!action_freeSpaceCondition_map[action_it->first].empty()) {
 					action_freeSpaceCondition_map[action_it->first].append(" && ");
 				}
-				if (c->get_optimize_scheduling()) {
+				if (c->get_optimize_scheduling() || (c->get_target_ABI() == Target_ABI::rtos)) {
 					action_freeSpaceCondition_map[action_it->first].append("(" + sched_data_it->channel_name
 						+ "_free >= " + std::to_string(sched_data_it->elements) + ")");
 					action_post_exec_map[action_it->first].append("\t"+ sched_data_it->channel_name
@@ -732,9 +571,12 @@ std::string Scheduling::generate_local_scheduler(
 		}
 	}
 
-
-
-	if (c->get_sched_non_preemptive() || c->get_sched_rr()) {
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		return generate_rtos_scheduler(actions, fsm, priorities, converted_guard_conditions, action_schedulingCondition_map,
+			                           action_freeSpaceCondition_map, state_channel_access, action_post_exec_map, schedule_function_name,
+			                            scheduling_loop_bound, sched_loop, is_source, is_sink);
+	}
+	else if (c->get_sched_non_preemptive() || c->get_sched_rr()) {
 		return default_local(actions, fsm, priorities,
 			input_classification, output_classification, prefix,
 			converted_guard_conditions,

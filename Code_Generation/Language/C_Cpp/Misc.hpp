@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include "IR/Dataflow_Network.hpp"
 
 void generate_cmake_file(
 	std::string network_name,

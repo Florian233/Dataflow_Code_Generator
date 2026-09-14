@@ -23,5 +23,6 @@ namespace Scheduling {
 		bool unused_channel;
 		// parameters for the function call, this is inserted by the scheduler generator itself if used
 		std::string parameters;
+		unsigned arg;
 	} Channel_Schedule_Data;
 }

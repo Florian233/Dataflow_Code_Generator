@@ -14,7 +14,7 @@ std::string ABI_stdcpp::atomic_var_decl(
 	std::string var,
 	std::string prefix)
 {
-	return prefix + "std::atomic_flag " + var + "_lock = ATOMIC_FLAG_INIT;\n";
+	return prefix + "static std::atomic_flag " + var + "_lock = ATOMIC_FLAG_INIT;\n";
 }
 
 std::string ABI_stdcpp::atomic_test_set(
@@ -77,5 +77,11 @@ std::string ABI_stdcpp::allocation(
 	std::string prefix)
 {
 	// not required for this ABI.
+	return "";
+}
+
+std::string ABI_stdcpp::add_constructor_code(
+	std::string actor_class_name)
+{
 	return "";
 }

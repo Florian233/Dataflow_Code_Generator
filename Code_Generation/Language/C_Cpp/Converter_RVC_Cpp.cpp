@@ -3,7 +3,19 @@
 #include "Config/config.h"
 #include "ABI/abi.hpp"
 #include <iostream>
+#include "ABI/RTOS/Types.hpp"
 
+static inline std::string check_replacement(
+	std::string identifier,
+	std::map<std::string, std::string> replacements)
+{
+	if (replacements.contains(identifier)) {
+		return replacements[identifier];
+	}
+	else {
+		return identifier;
+	}
+}
 
 namespace Converter_RVC_Cpp {
 
@@ -11,16 +23,17 @@ namespace Converter_RVC_Cpp {
 		AST::Function* function,
 		std::string prefix,
 		std::map<std::string, std::string> replacements,
-		std::map<std::string, std::string> const_map)
+		std::map<std::string, std::string> const_map,
+		std::string add_args)
 	{
 		std::string ret = prefix;
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		if (c->get_target_language() == Target_Language::c) {
 			ret += "static ";
 		}
 		ret += convert_type(&function->ret_type, "", const_map);
-		ret += " " + function->name.name + "(";
-		bool first = true;
+		ret += " " + function->name.name + "(" + add_args;
+		bool first = add_args.empty();
 		for (auto p : function->parameters) {
 			if (!first) {
 				ret += ", ";
@@ -33,7 +46,7 @@ namespace Converter_RVC_Cpp {
 
 		ret += ") {\n";
 		ret += prefix + "\treturn ";
-		ret += convert_expression(function->expression, replacements);
+		ret += convert_expression(function->expression, replacements, const_map);
 		ret+= ";\n" + prefix + "}\n";
 		return ret;
 	}
@@ -42,17 +55,18 @@ namespace Converter_RVC_Cpp {
 		AST::Procedure* procedure,
 		std::string prefix,
 		std::map<std::string, std::string> replacements,
-		std::map<std::string, std::string> const_map)
+		std::map<std::string, std::string> const_map,
+		std::string add_args)
 	{
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 
 		std::string ret = prefix;
 		if (c->get_target_language() == Target_Language::c) {
 			ret += "static ";
 		}
 		ret += "void ";
-		ret += " " + procedure->name.name + "(";
-		bool first = true;
+		ret += " " + procedure->name.name + "(" + add_args;
+		bool first = add_args.empty();
 		for (auto p : procedure->parameters) {
 			if (!first) {
 				ret += ", ";
@@ -84,7 +98,7 @@ namespace Converter_RVC_Cpp {
 		std::map<std::string, std::string> const_map)
 	{
 		std::string ret = prefix + "extern ";
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		if (c->get_target_language() == Target_Language::cpp) {
 			ret += "\"C\" ";
 		}
@@ -111,7 +125,7 @@ namespace Converter_RVC_Cpp {
 		std::map<std::string, std::string> const_map)
 	{
 		std::string ret = prefix + "extern ";
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		if (c->get_target_language() == Target_Language::cpp) {
 			ret += "\"C\" ";
 		}
@@ -134,16 +148,22 @@ namespace Converter_RVC_Cpp {
 
 	static std::string baseexpr_conversion(
 		AST::BaseExpression* base,
-		std::map<std::string, std::string> replacements)
+		std::map<std::string, std::string> replacements,
+		std::map<std::string, std::string> const_map)
 	{
 		std::string result;
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		if (dynamic_cast<AST::Literal*>(base) != nullptr) {
 			auto l = dynamic_cast<AST::Literal*>(base);
 			if (l->negation) {
 				result = "-";
 			}
-			result.append(l->literal);
+			if (replacements.contains(l->literal)) {
+				result.append(replacements[l->literal]);
+			}
+			else {
+				result.append(l->literal);
+			}
 		}
 		else if (dynamic_cast<AST::Identifier*>(base) != nullptr) {
 			auto i = dynamic_cast<AST::Identifier*>(base);
@@ -160,26 +180,35 @@ namespace Converter_RVC_Cpp {
 				result += i->unary_right->ops;
 			}
 			for (auto x : i->indices){
-				result += "[" + convert_expression(x->index, replacements) + "]";
+				result += "[" + convert_expression(x->index, replacements, const_map) + "]";
 			}
 			if (i->call != nullptr) {
 				result += "(";
+				bool first = true;
+				if (c->get_target_ABI() == Target_ABI::stdc && !const_map.contains(i->identifier)) {
+					first = false;
+					result += "_g";
+				}
+
 				for (auto it = i->call->parameters.begin(); it != i->call->parameters.end(); ++it) {
-					if (it != i->call->parameters.begin()) {
+					if (!first) {
 						result += ", ";
 					}
-					result += convert_expression(*it, replacements);
+					else {
+						first = false;
+					}
+					result += convert_expression(*it, replacements, const_map);
 				}
 				result += ")";
 			}
 		}
 		else if (dynamic_cast<AST::TernaryOperator*>(base) != nullptr) {
 			auto t = dynamic_cast<AST::TernaryOperator*>(base);
-			result = convert_expression(t->cond, replacements);
+			result = convert_expression(t->cond, replacements, const_map);
 			result += " ? ";
-			result += convert_expression(t->ifblock, replacements);
+			result += convert_expression(t->ifblock, replacements, const_map);
 			result += " : ";
-			result += convert_expression(t->elseblock, replacements);
+			result += convert_expression(t->elseblock, replacements, const_map);
 		}
 		else if (dynamic_cast<AST::Operator*>(base) != nullptr) {
 			auto o = dynamic_cast<AST::Operator*>(base);
@@ -187,21 +216,21 @@ namespace Converter_RVC_Cpp {
 			if (ops == "=") {
 				ops = "==";
 			}
-			result = baseexpr_conversion(o->left, replacements) + " " + ops + " " + baseexpr_conversion(o->right, replacements);
+			result = baseexpr_conversion(o->left, replacements, const_map) + " " + ops + " " + baseexpr_conversion(o->right, replacements, const_map);
 		}
 		else if (dynamic_cast<AST::Expression*>(base) != nullptr) {
 			auto e = dynamic_cast<AST::Expression*>(base);
 			if (e->brakets) {
 				result = "(";
 			}
-			result += baseexpr_conversion(e->child, replacements);
+			result += baseexpr_conversion(e->child, replacements, const_map);
 			if (e->brakets) {
 				result += ")";
 			}
 		}
 		else if (dynamic_cast<AST::PortPreview*>(base) != nullptr) {
 			auto p = dynamic_cast<AST::PortPreview*>(base);
-			ABI_CHANNEL_PREFETCH(c, result, p->port, baseexpr_conversion(p->index->index, replacements))
+			ABI_CHANNEL_PREFETCH(c, result, p->port, baseexpr_conversion(p->index->index, replacements, const_map))
 		}
 		else if (dynamic_cast<AST::PortSize*>(base) != nullptr) {
 			auto p = dynamic_cast<AST::PortSize*>(base);
@@ -216,6 +245,9 @@ namespace Converter_RVC_Cpp {
 			if (c->get_target_language() == Target_Language::cpp) {
 				result = e->enum_name + "::" + e->enum_element;
 			}
+			else if (c->get_target_ABI() ==Target_ABI::stdc) {
+				result = e->enum_name + "_" + e->enum_element;
+			}
 			else {
 				result = e->enum_element;
 			}
@@ -225,9 +257,10 @@ namespace Converter_RVC_Cpp {
 
 	std::string convert_expression(
 		AST::Expression* expression,
-		std::map<std::string, std::string> replacements)
+		std::map<std::string, std::string> replacements,
+		std::map<std::string, std::string> const_map)
 	{
-		return baseexpr_conversion(expression, replacements);
+		return baseexpr_conversion(expression, replacements, const_map);
 	}
 
 	static std::string convert_generator(
@@ -243,8 +276,8 @@ namespace Converter_RVC_Cpp {
 		else {
 			result.append(gen->identifier.name);
 		}
-		result.append(" = " + convert_expression(gen->start, replacements) + "; "
-			+ gen->identifier.name + " <= " + convert_expression(gen->end, replacements) + ";");
+		result.append(" = " + convert_expression(gen->start, replacements, const_map) + "; "
+			+ gen->identifier.name + " <= " + convert_expression(gen->end, replacements, const_map) + ";");
 		result.append(gen->identifier.name + "++) {\n");
 		return result;
 	}
@@ -256,7 +289,7 @@ namespace Converter_RVC_Cpp {
 		std::map<std::string, std::string> const_map)
 	{
 		std::string result;
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		if (dynamic_cast<AST::ForeachStatement*>(stmt) != nullptr) {
 			auto f = dynamic_cast<AST::ForeachStatement*>(stmt);
 			for (auto g : f->generators) {
@@ -275,7 +308,7 @@ namespace Converter_RVC_Cpp {
 		}
 		else if (dynamic_cast<AST::WhileStatement*>(stmt) != nullptr) {
 			auto w = dynamic_cast<AST::WhileStatement*>(stmt);
-			result.append(prefix + "while (" + convert_expression(w->condition, replacements) + ") {\n");
+			result.append(prefix + "while (" + convert_expression(w->condition, replacements, const_map) + ") {\n");
 			for (auto v : w->vars) {
 				auto tmp = convert_vardef(v, prefix + "\t", false, replacements, const_map);
 				result.append(tmp.first + tmp.second);
@@ -287,9 +320,9 @@ namespace Converter_RVC_Cpp {
 		}
 		else if (dynamic_cast<AST::AssignmentStatement*>(stmt) != nullptr) {
 			auto a = dynamic_cast<AST::AssignmentStatement*>(stmt);
-			result = prefix + a->identifier.name;
+			result = prefix + check_replacement(a->identifier.name, replacements);
 			for (auto x : a->indices) {
-				result.append("[" + convert_expression(x->index, replacements) + "]");
+				result.append("[" + convert_expression(x->index, replacements, const_map) + "]");
 			}
 
 			if (dynamic_cast<AST::ListComprehension*>(a->asgnvalue) != nullptr) {
@@ -303,7 +336,7 @@ namespace Converter_RVC_Cpp {
 				}
 			}
 			else {
-				result.append(" = " + convert_expression(a->asgnvalue, replacements) + ";\n");
+				result.append(" = " + convert_expression(a->asgnvalue, replacements, const_map) + ";\n");
 			}
 
 		}
@@ -320,21 +353,27 @@ namespace Converter_RVC_Cpp {
 			result.append(prefix + "}\n");
 		}
 		else if (dynamic_cast<AST::CallStatement*>(stmt) != nullptr) {
-			auto c = dynamic_cast<AST::CallStatement*>(stmt);
-			result = prefix + c->name.name + "(";
+			auto cs = dynamic_cast<AST::CallStatement*>(stmt);
+			result = prefix + check_replacement(cs->name.name, replacements) + "(";
 			bool first = true;
-			for (auto p : c->parameters) {
+			if (c->get_target_ABI() == Target_ABI::stdc && !const_map.contains(cs->name.name)) {
+				first = false;
+				result += "_g";
+			}
+			for (auto p : cs->parameters) {
 				if (!first) {
 					result += ", ";
 				}
-				first = false;
-				result += convert_expression(p, replacements);
+				else {
+					first = false;
+				}
+				result += convert_expression(p, replacements, const_map);
 			}
 			result += ");\n";
 		}
 		else if (dynamic_cast<AST::IfStatement*>(stmt) != nullptr) {
 			auto i = dynamic_cast<AST::IfStatement*>(stmt);
-			result = prefix + "if (" + convert_expression(i->condition, replacements) + ") {\n";
+			result = prefix + "if (" + convert_expression(i->condition, replacements, const_map) + ") {\n";
 			for (auto s : i->ifblock) {
 				result += convert_statement(s, prefix + "\t", replacements, const_map);
 			}
@@ -349,7 +388,7 @@ namespace Converter_RVC_Cpp {
 		else if (dynamic_cast<AST::OutputChannelWriteStatement*>(stmt) != nullptr) {
 			auto o = dynamic_cast<AST::OutputChannelWriteStatement*>(stmt);
 			std::string tmp;
-			ABI_CHANNEL_WRITE(c, tmp, baseexpr_conversion(o->expr, replacements), o->port.name);
+			ABI_CHANNEL_WRITE(c, tmp, baseexpr_conversion(o->expr, replacements, const_map), o->port.name);
 			result.append(prefix + tmp + ";\n");
 		}
 		else if (dynamic_cast<AST::InputChannelReadStatement*>(stmt) != nullptr) {
@@ -358,7 +397,7 @@ namespace Converter_RVC_Cpp {
 			ABI_CHANNEL_READ(c, tmp, i->port.name);
 			result.append(prefix + i->identifier.name);
 			if (i->index != nullptr) {
-				result.append("[" + baseexpr_conversion(i->index->index, replacements) + "]");
+				result.append("[" + baseexpr_conversion(i->index->index, replacements, const_map) + "]");
 			}
 			result.append(" = " + tmp + ";\n");
 		}
@@ -376,10 +415,20 @@ namespace Converter_RVC_Cpp {
 		std::string name,
 		std::map<std::string, std::string> const_map)
 	{
-		if (type->non_standard_type) {
-			return type->type.name + " " + name;
-		}
+		Config* c = Config::getInstance();
 		std::string ret;
+		if (type->non_standard_type) {
+			ret = type->type.name;
+			/* This is usually only FSM. */
+			if (c->get_target_language() == Target_Language::c) {
+				ret.append("_t");
+			}
+			if (!name.empty()) {
+				ret.append(" " + name);
+			}
+			return ret;
+		}
+
 		int value = 5555; /* larger than any check to go to default */
 		if (type->size != nullptr) {
 			value = Conversion_Helper::evaluate_constant_expression(type->size, const_map);
@@ -406,7 +455,7 @@ namespace Converter_RVC_Cpp {
 				ret = "unsigned int";
 			}
 			else if (value <= 64) {
-				ret = "unsigned long";
+				ret = "unsigned long long";
 			}
 			else {
 				ret = "unsigned int";
@@ -423,7 +472,7 @@ namespace Converter_RVC_Cpp {
 				ret = "int";
 			}
 			else if (value <= 64) {
-				ret = "long";
+				ret = "long long";
 			}
 			else {
 				ret = "int";
@@ -460,11 +509,19 @@ namespace Converter_RVC_Cpp {
 				ret = "float";
 			}
 		}
-		else if (type->type.name == "string") {
+		else if (type->type.name == "String") {
 			ret = "const char*";
 		}
 
-		return ret + " " + name;
+		if (c->get_target_ABI() == Target_ABI::rtos) {
+			ret = convert_rtos_type(ret);
+		}
+
+		if (!name.empty()) {
+			ret.append(" " + name);
+		}
+
+		return ret;
 	}
 
 	std::pair<std::string, std::string> convert_vardef(
@@ -472,11 +529,12 @@ namespace Converter_RVC_Cpp {
 		std::string prefix,
 		bool noinit,
 		std::map<std::string, std::string> replacements,
-		std::map<std::string, std::string> const_map)
+		std::map<std::string, std::string> const_map,
+		bool rtos)
 	{
 		std::string ret = prefix;
 		std::string init;
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		/* this is a list comprehension. */
 		std::pair<std::string, std::string> listcomp_init;
 		if ((vardef->assign != nullptr) && (dynamic_cast<AST::ListComprehension*>(vardef->assign->child) != nullptr)) {
@@ -485,11 +543,15 @@ namespace Converter_RVC_Cpp {
 				prefix, vardef->name.name, replacements, const_map, vardef->constassign);
 		}
 
+		if (rtos) {
+			ret += "static ";
+		}
+
 		if (vardef->constassign && listcomp_init.second.empty()) {
 			/* Noinit should only be true for actor variables in C code generation
 			 * but not for variables elsewhere where no static is required
 			 */
-			if (noinit) {
+			if (noinit && !rtos) {
 				ret += "static ";
 			}
 			ret += "const ";
@@ -501,10 +563,14 @@ namespace Converter_RVC_Cpp {
 		if (vardef->assign != nullptr) {
 			if (dynamic_cast<AST::ListComprehension*>(vardef->assign->child) == nullptr) {
 				if (noinit && !vardef->constassign) {
-					init = prefix + vardef->name.name + " = " + convert_expression(vardef->assign, replacements) + ";\n";
+					std::string name = vardef->name.name;
+					if (c->get_target_ABI() == Target_ABI::stdc) {
+						name = "_g->" + name;
+					}
+					init = prefix + name + " = " + convert_expression(vardef->assign, replacements, const_map) + ";\n";
 				}
 				else {
-					ret += " = " + convert_expression(vardef->assign, replacements);
+					ret += " = " + convert_expression(vardef->assign, replacements, const_map);
 				}
 			}
 			else {
@@ -528,9 +594,9 @@ namespace Converter_RVC_Cpp {
 		std::string p = convert_type(&param->type, param->name.name, const_map);
 		std::string i;
 		if (param->asign != nullptr) {
-			convert_expression(param->asign, std::map<std::string, std::string>());
+			i = convert_expression(param->asign, std::map<std::string, std::string>(), const_map);
 		}
-		return std::make_pair(p+";\n", i);
+		return std::make_pair(prefix + p +";\n", i);
 	}
 
 	std::pair<std::string, std::string> convert_listcomprehension(
@@ -541,7 +607,7 @@ namespace Converter_RVC_Cpp {
 		std::map<std::string, std::string> const_map,
 		bool constasgn)
 	{
-		Config* c = c->getInstance();
+		Config* c = Config::getInstance();
 		bool contains_generator = !outexpr->generators.empty();
 		bool contains_lstcomp = false;
 		for (auto e = outexpr->expressions.begin(); e != outexpr->expressions.end(); ++e) {
@@ -559,7 +625,7 @@ namespace Converter_RVC_Cpp {
 					result += ", ";
 				}
 				first = false;
-				result += convert_expression(x, replacements);
+				result += convert_expression(x, replacements, const_map);
 			}
 			result += "}";
 
@@ -573,7 +639,7 @@ namespace Converter_RVC_Cpp {
 			prefix += "\t";
 		}
 #endif
-		if (c->get_target_language() == Target_Language::c && !constasgn) {
+		if (c->get_target_ABI() == Target_ABI::stdc && !constasgn) {
 			/* Next step will generate init code, hence, the variable will later be stored inside the struct */
 			assign_var = "_g->" + assign_var;
 		}
@@ -595,14 +661,14 @@ namespace Converter_RVC_Cpp {
 					/* The noinit = true makes the first part empty, hence, adding only second is sufficient. */
 				}
 				else {
-					result += prefix + "\t" + assign_var + "[" + iterator_var + "] = " + convert_expression(e, replacements) + ";\n";
+					result += prefix + "\t" + assign_var + "[" + iterator_var + "] = " + convert_expression(e, replacements, const_map) + ";\n";
 				}
 				result.append(prefix + "\t" + "++" + iterator_var + ";\n");
 			}
 		}
 		else {
 			for (auto e : outexpr->expressions) {
-				result += prefix + "\t" + assign_var + "[" + iterator_var + "++] = " + convert_expression(e, replacements) + ";\n";
+				result += prefix + "\t" + assign_var + "[" + iterator_var + "++] = " + convert_expression(e, replacements, const_map) + ";\n";
 			}
 
 		}

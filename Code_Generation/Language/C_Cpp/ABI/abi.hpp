@@ -2,6 +2,7 @@
 
 #include "stdc/ABI_stdc.hpp"
 #include "stdcpp/ABI_stdcpp.hpp"
+#include "RTOS/ABI_rtos.hpp"
 
 #define ABI_OP_ASGN(enum_val, ret, namespace_val, op_val, ...) \
 	case Target_ABI::##enum_val: (ret) = namespace_val::##op_val(__VA_ARGS__); break;
@@ -10,6 +11,7 @@
 	switch((conf)->get_target_ABI()) {\
 		ABI_OP_ASGN(stdc, ret, ABI_stdc, op_val, __VA_ARGS__); \
 		ABI_OP_ASGN(stdcpp, ret, ABI_stdcpp, op_val, __VA_ARGS__); \
+		ABI_OP_ASGN(rtos, ret, ABI_rtos, op_val, __VA_ARGS__); \
 		default: \
 			std::cout << "Unknown ABI...exiting." << std::endl; \
 			exit(33); \
@@ -22,6 +24,7 @@
 	switch((conf)->get_target_ABI()) {\
 		ABI_OP_RET(stdc, ABI_stdc, op_val, __VA_ARGS__) \
 		ABI_OP_RET(stdcpp, ABI_stdcpp, op_val, __VA_ARGS__) \
+		ABI_OP_RET(rtos, ABI_rtos, op_val, __VA_ARGS__) \
 		default: \
 			std::cout << "Unknown ABI...exiting." << std::endl; \
 			exit(33); \
@@ -32,7 +35,7 @@
 #define ABI_ATOMIC_TEST_SET(conf, ret, var, prefix) ABI_ALL_ASGN(conf, ret, atomic_test_set, var, prefix)
 #define ABI_ATOMIC_CLEAR(conf, ret, var, prefix) ABI_ALL_ASGN(conf, ret, atomic_clear, var, prefix)
 
-#define ABI_CHANNEL_GEN(conf, c) ABI_ALL_RET(conf, generate_channel_code, c)
+#define ABI_CHANNEL_GEN(conf) ABI_ALL_RET(conf, generate_channel_code)
 #define ABI_CHANNEL_DECL(conf, ret, name, sz, type, s, prefx) ABI_ALL_ASGN(conf, ret, channel_decl, name, sz, type, s, prefx)
 #define ABI_CHANNEL_INIT(conf, ret, name, type, impl_type, sz, prefix) ABI_ALL_ASGN(conf, ret, channel_init, name, type, impl_type, sz, prefix)
 #define ABI_CHANNEL_READ(conf, ret, channel) ABI_ALL_ASGN(conf, ret, channel_read, channel)
@@ -40,6 +43,8 @@
 #define ABI_CHANNEL_PREFETCH(conf, ret, channel, offset) ABI_ALL_ASGN(conf, ret, channel_prefetch, channel, offset)
 #define ABI_CHANNEL_SIZE(conf, ret, channel) ABI_ALL_ASGN(conf, ret, channel_size, channel)
 #define ABI_CHANNEL_FREE(conf, ret, channel) ABI_ALL_ASGN(conf, ret, channel_free, channel)
+
+#define ABI_CHANNEL_REG_READ(conf, ret, channel, callback, arg) ABI_ALL_ASGN(conf, ret, channel_register_read, channel, callback, arg)
 
 #define ABI_THREAD_HEADER(conf, ret) ABI_ALL_ASGN(conf, ret, thread_creation_include)
 #define ABI_THREAD_CREATE(conf, ret,func, prefix, ident) ABI_ALL_ASGN(conf, ret, thread_creation, func, prefix, ident)
@@ -50,3 +55,5 @@
 
 #define ABI_ALLOC_HEADER(conf, ret) ABI_ALL_ASGN(conf, ret, allocation_include)
 #define ABI_ALLOC(conf, ret, var, sz, type, prefix) ABI_ALL_ASGN(conf, ret, allocation, var, sz, type, prefix)
+
+#define ABI_ADD_CONSTRUCTOR(conf, ret, name) ABI_ALL_ASGN(conf, ret, add_constructor_code, name)

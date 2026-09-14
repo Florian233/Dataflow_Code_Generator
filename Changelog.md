@@ -1,15 +1,20 @@
 # Changelog
 
+## 2.1
+
+### Added
+ * Added RTOS code generation
+
+### Changed
+ * Bug fixes in all components
+ * Removed level mapping 
+
 ## 2.0
 
 ### Added
- * Lexer, Parser and AST generation
- * Code generation now based on new ASTs for actors
- * Model optimization through actor fusion
+ * Added CAL parser
 
 ### Changed
- * Runtime of code generation and optimization is printed to the console
- * Fixed bugs in topology sort that lead to an infinite loop or wrong sorting
 
 ## 1.3
 

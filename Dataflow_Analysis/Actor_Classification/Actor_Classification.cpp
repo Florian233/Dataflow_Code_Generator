@@ -27,11 +27,14 @@ static bool merge_maps(
 	return ret;
 }
 
-/* Compare two maps and return true if map2 is a subset of map1, false otherwise. */
+/* Compare two maps and return true if map2 is equal to map1, false otherwise. */
 static bool compare_maps(
 	std::map<std::string, unsigned>& map1,
 	std::map<std::string, unsigned>& map2)
 {
+	if (map1.size() != map2.size()) {
+		return false;
+	}
 	for (auto it = map1.begin(); it != map1.end(); ++it) {
 		if (!map2.contains(it->first) || map2[it->first] != it->second) {
 			return false;
@@ -94,7 +97,7 @@ static void print_actor_classification(
 }
 
 void IR::Actor::classify_actor(void) {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	if (fsm.size() == 0) {
 		bool static_in{ true };
 		bool static_out{ true };
@@ -333,8 +336,6 @@ void IR::Actor::classify_actor(void) {
 		size_t path_length = fsm_paths[0].size();
 		for (size_t i = 0; i < path_length; ++i) {
 			//now check that in each path the same tokenrates are used for each step
-			std::map<std::string, unsigned> in;
-			std::map<std::string, unsigned> out;
 			for (size_t j = 1; j < fsm_paths.size(); ++j) {
 				cyclostatic_in &= compare_maps(state_tokenrate_map_in[fsm_paths[j - 1][i]],
 					state_tokenrate_map_in[fsm_paths[j][i]]);

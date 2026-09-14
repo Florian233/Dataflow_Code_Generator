@@ -26,7 +26,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 	std::map<std::string, std::string> port_type_map,
 	std::map<std::string, std::string> const_map)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	//token contains start of the fifo part - first fifo name
 	std::string output;
 	std::string definitions;
@@ -55,7 +55,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 			}
 
 			if (input_channel_parameters) {
-				output.append("\t" + prefix + it->name + "[" + repeat_iterator + "] = " + it->name + "_param[" + repeat_iterator + "];\n");
+				output.append("\t" + prefix + it->name + "[" + repeat_iterator + "] = " + input->port.name + "_param[" + repeat_iterator + "];\n");
 			}
 			else {
 				std::string tmp;
@@ -112,6 +112,7 @@ static std::tuple<std::string, std::string> convert_input_FIFO_access(
 	d.is_pointer = d.elements > 1;
 	d.type = port_type_map[input->port.name];
 	d.unused_channel = unused_channel;
+	d.arg = 0;
 	for (auto it = input->IDs.begin(); it != input->IDs.end(); ++it) {
 		d.var_names.push_back((*it).name);
 	}
@@ -131,14 +132,13 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 	AST::Output_Expression* output,
 	std::string prefix,
 	std::string method_name,
-	bool output_channel_parameters,
 	std::set<std::string> unused_out_channels,
 	std::map<std::string, std::vector< Scheduling::Channel_Schedule_Data>>& scheduledata,
 	std::map<std::string, std::string> port_type_map,
 	std::map<std::string, std::string> replacements,
 	std::map<std::string, std::string> const_map)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	//token contains start of output fifo part - first fifo name
 	std::string output_str;
 	std::string definitions;
@@ -162,7 +162,7 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 			add_define = true;
 		}
 		else {
-			expr = Converter_RVC_Cpp::convert_expression(e, replacements);
+			expr = Converter_RVC_Cpp::convert_expression(e, replacements, const_map);
 			//output.append(prefix + accessor_var + " =" + expr + ";\n");
 		}
 		++accessor_counter;
@@ -173,16 +173,9 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 		repeat_count = Conversion_Helper::evaluate_constant_expression(output->repeat, const_map );
 
 		std::string repeat_iterator;
-		std::string in_repeat_iterator;
 		if (!unused_channel) {
 			repeat_iterator = Converter_RVC_Cpp::unused_identifier();
 			output_str.append(prefix + "for (unsigned " + repeat_iterator + " = 0; " + repeat_iterator + " < " + std::to_string(repeat_count) + "; ++" + repeat_iterator + ") {\n");
-
-			in_repeat_iterator = Converter_RVC_Cpp::unused_identifier();
-			if (output_channel_parameters) {
-				parameters.append("\n" + prefix + port_type_map[output->port.name] + " *" + output->port.name + "_param");
-				output_str.append(prefix + "\t" + in_repeat_iterator + " = " + repeat_iterator + " * " + std::to_string(output_fifo_expr.size()) + ";\n");
-			}
 		}
 		for (auto it = output_fifo_expr.begin(); it != output_fifo_expr.end(); ++it) {
 			if (std::get<1>(*it)) {
@@ -195,15 +188,10 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 				continue;
 			}
 
-			if (output_channel_parameters) {
-				output_str.append(prefix + "\t" + output->port.name + "_param[" + in_repeat_iterator + "++] = " + std::get<0>(*it) + "[" + repeat_iterator + "];\n");
-			}
-			else {
-				std::string tmp;
-				std::string wv = std::get<0>(*it) + "[" + repeat_iterator + "]";
-				ABI_CHANNEL_WRITE(c, tmp, wv, output->port.name)
-				output_str.append(prefix + "\t" + tmp + ";\n");
-			}
+			std::string tmp;
+			std::string wv = std::get<0>(*it) + "[" + repeat_iterator + "]";
+			ABI_CHANNEL_WRITE(c, tmp, wv, output->port.name)
+			output_str.append(prefix + "\t" + tmp + ";\n");
 		}
 		if (!unused_channel) {
 			output_str.append(prefix + "}\n");
@@ -212,34 +200,11 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 	else {
 		if (!unused_channel) {
 			/* Ignore the add_define as it is only a scalar value that can written directly to the output */
-			std::string channel_iterator;
-			if (output_channel_parameters && !unused_channel) {
-				if (output_fifo_expr.size() == 1) {
-					parameters.append("\n" + prefix + port_type_map[output->port.name] + " &" + output->port.name + "_param");
-				}
-				else {
-					parameters.append("\n" + prefix + port_type_map[output->port.name] + " *" + output->port.name + "_param");
-					channel_iterator = Converter_RVC_Cpp::unused_identifier();
-					output_str.append(prefix + "unsigned " + channel_iterator + " = 0;\n");
-				}
-			}
-
 			for (auto it = output_fifo_expr.begin(); it != output_fifo_expr.end(); ++it) {
-
-				if (output_channel_parameters) {
-					if (output_fifo_expr.size() == 1) {
-						output_str.append(prefix + output->port.name + "_param = " + get<0>(*it) + ";\n");
-					}
-					else {
-						output_str.append(prefix + output->port.name + "_param[" + channel_iterator + "++] = " + get<0>(*it) + ";\n");
-					}
-				}
-				else {
-					std::string tmp;
-					std::string wv = get<0>(*it);
-					ABI_CHANNEL_WRITE(c, tmp, wv, output->port.name)
-					output_str.append(prefix + tmp + ";\n");
-				}
+				std::string tmp;
+				std::string wv = get<0>(*it);
+				ABI_CHANNEL_WRITE(c, tmp, wv, output->port.name)
+				output_str.append(prefix + tmp + ";\n");
 			}
 		}
 	}
@@ -249,10 +214,11 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 	d.elements = static_cast<unsigned>(output->expressions.size()) * repeat_count;
 	d.in = false;
 	d.repeat = repeat_count > 1;
-	d.parameter_generated = output_channel_parameters && !unused_channel;
+	d.parameter_generated = false;
 	d.is_pointer = d.elements > 1;
 	d.type = port_type_map[output->port.name];
 	d.unused_channel = unused_channel;
+	d.arg = 0;
 	//ignore var_names here, as the output is written to the channel anyhow and not required for guards
 	scheduledata[method_name].push_back(d);
 
@@ -272,7 +238,6 @@ static std::tuple<std::string, std::string> convert_output_FIFO_access(
 std::string convert_action(
 	IR::Action* action,
 	bool input_channel_parameters,
-	bool output_channel_parameters,
 	std::set<std::string> unused_in_channels,
 	std::set<std::string> unused_out_channels,
 	std::string prefix,
@@ -287,7 +252,7 @@ std::string convert_action(
 	std::string end_of_output;
 	std::string middle_of_output;
 	std::string method_name;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	if (action->is_init()) {
 		if (c->get_target_language() == Target_Language::c) {
@@ -315,18 +280,20 @@ std::string convert_action(
 			output.append("static ");
 		}
 		output.append("void " + method_name + "(");
-		output.append(class_name + "_t *_g");
-		insert_separator = true;
-		added_parameters = true;
+		if (c->get_target_ABI() != Target_ABI::rtos) {
+			output.append(class_name + "_t *_g");
+			insert_separator = true;
+			added_parameters = true;
+		}
 	}
 	else {
 		output.append("void " + method_name + "(");
 	}
-	if (!input_channel_parameters && !output_channel_parameters) {
+	if (!input_channel_parameters) {
 		if (c->get_target_language() == Target_Language::cpp) {
 			output.append("void");
 		}
-		output.append(") { \n");
+		output.append(") {\n");
 	}
 
 	for (auto in : action->get_ast()->input_patterns) {
@@ -346,22 +313,13 @@ std::string convert_action(
 
 	for (auto out : action->get_ast()->output_expressions) {
 		std::tuple<std::string, std::string> tmp = convert_output_FIFO_access(out,
-			prefix + "\t", method_name, output_channel_parameters, unused_out_channels, scheduledata, port_type_map,
+			prefix + "\t", method_name, unused_out_channels, scheduledata, port_type_map,
 			replacements, const_map);
 
-		if (output_channel_parameters) {
-			if (!std::get<0>(tmp).empty()) {
-				added_parameters = true;
-				if (insert_separator) {
-					output.append(", ");
-				}
-			}
-			output.append(get<0>(tmp));
-		}
 		end_of_output.append(get<1>(tmp));
 	}
 
-	if (input_channel_parameters || output_channel_parameters) {
+	if (input_channel_parameters) {
 		if (added_parameters) {
 			output.append(")\n" + prefix +"{\n");
 		}
@@ -377,10 +335,14 @@ std::string convert_action(
 		output.append(x.second);
 	}
 
+	/* additional_code initializes the (internal merge channel) variables, e.g. resets their
+	 * size counters. It must added before the action body. */
+	output.append(additional_code);
+
 	for (auto s : action->get_ast()->statements) {
 		auto x = Converter_RVC_Cpp::convert_statement(s, prefix + "\t", replacements, const_map);
 		output.append(x);
 	}
 
-	return output + end_of_output + additional_code + prefix + "}\n";
+	return output + end_of_output + prefix + "}\n";
 }

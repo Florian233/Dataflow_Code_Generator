@@ -9,6 +9,9 @@ static void decode_baseexpression(AST::BaseExpression* b);
 static void print_type(AST::Type t);
 static void print_vardef(AST::VarDefinition* vardef, std::string prefix);
 
+static const unsigned AST_PRINT_MAX_DEPTH = 3333;
+static unsigned ast_print_depth = 0;
+
 static void print_identifier(AST::Identifier* i)
 {
 	if (i->unary_left != nullptr) {
@@ -120,7 +123,15 @@ static void print_portfree(AST::PortFree* p)
 
 static void decode_baseexpression(AST::BaseExpression* b)
 {
-	assert(b != nullptr);
+	++ast_print_depth;
+	if (ast_print_depth > AST_PRINT_MAX_DEPTH) {
+		std::cout << "End: max depth reached!";
+		return;
+	}
+	if (b == nullptr) {
+		std::cout << "<null>";
+		return;
+	}
 	if (dynamic_cast<AST::Literal*>(b) != nullptr) {
 		print_literal(dynamic_cast<AST::Literal*>(b));
 	}
@@ -154,6 +165,7 @@ static void decode_baseexpression(AST::BaseExpression* b)
 	else {
 		std::cout << "Unknown";
 	}
+	--ast_print_depth;
 }
 
 static void print_expression(AST::Expression* e)
@@ -171,6 +183,11 @@ void AST::print_statement(
 	AST::Statement* s,
 	std::string prefix)
 {
+	++ast_print_depth;
+	if (ast_print_depth > AST_PRINT_MAX_DEPTH) {
+		std::cout << "End: max depth reached!\n";
+		return;
+	}
 	std::cout << prefix;
 	if (dynamic_cast<AST::IfStatement*>(s) != nullptr) {
 		auto i = dynamic_cast<AST::IfStatement*>(s);
@@ -287,10 +304,16 @@ void AST::print_statement(
 	else {
 		std::cout << "Unknown Statement\n";
 	}
+	--ast_print_depth;
 }
 
 static void print_type(AST::Type t)
 {
+	++ast_print_depth;
+	if (ast_print_depth > AST_PRINT_MAX_DEPTH) {
+		std::cout << "End: max depth reached!";
+		return;
+	}
 	std::cout << "[" << t.type.name;
 	if (t.listtype != nullptr) {
 		std::cout << ", listtype : ";
@@ -301,6 +324,7 @@ static void print_type(AST::Type t)
 		print_expression(t.size);
 	}
 	std::cout << "]";
+	--ast_print_depth;
 }
 
 static void print_parameter(AST::Parameter* param)

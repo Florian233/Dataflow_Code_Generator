@@ -9,7 +9,7 @@
 /* Generate the file Channel.hpp containing the Channel base class, the data channel derived class
  * and if required the control channel derived class that is not carring data explicitly.
  */
-std::string c_buffer_impl =
+static std::string c_buffer_impl =
 "#ifndef CHANNEL_H\n"
 "#define CHANNEL_H\n\n"
 "#include <stdbool.h>\n"
@@ -478,14 +478,128 @@ std::string c_buffer_impl =
 "static inline signed long long preview_s64(channel_s64_t* c, size_t offset) {\n"
 "    return c->data[(c->read_index + offset) % c->max_size];\n"
 "}\n"
+"\n"
+"typedef struct channel_f32 {\n"
+"    volatile size_t read_index;\n"
+"    volatile size_t write_index;\n"
+"    volatile bool full;\n"
+"    size_t max_size;\n"
+"    float* data;\n"
+"} channel_f32_t;\n"
+"\n"
+"static inline void init_f32(channel_f32_t* c, size_t sz) {\n"
+"    c->read_index = 0;\n"
+"    c->write_index = 0;\n"
+"    c->full = false;\n"
+"    c->max_size = sz;\n"
+"    c->data = (float*)malloc(sz * sizeof(float));\n"
+"}\n"
+"\n"
+"static inline size_t size_f32(channel_f32_t* c) {\n"
+"    if (c->full) {\n"
+"        return c->max_size;\n"
+"    }\n"
+"    return (c->max_size + c->write_index - c->read_index) % c->max_size;\n"
+"}\n"
+"\n"
+"static inline size_t free_f32(channel_f32_t* c) {\n"
+"    return c->max_size - size_f32(c);\n"
+"}\n"
+"\n"
+"static inline float read_f32(channel_f32_t* c) {\n"
+"    float element = c->data[c->read_index];\n"
+"    if (c->read_index == (c->max_size - 1)) {\n"
+"        c->read_index = 0;\n"
+"    }\n"
+"    else {\n"
+"        ++(c->read_index);\n"
+"    }\n"
+"    if (c->full && (c->read_index != c->write_index)) {\n"
+"        c->full = false;\n"
+"    }\n"
+"    return element;\n"
+"}\n"
+"\n"
+"static inline void write_f32(channel_f32_t* c, float t) {\n"
+"    c->data[c->write_index] = t;\n"
+"    if (c->write_index == (c->max_size - 1)) {\n"
+"        c->write_index = 0;\n"
+"    }\n"
+"    else {\n"
+"        ++(c->write_index);\n"
+"    }\n"
+"    if (c->read_index == c->write_index) {\n"
+"        c->full = true;\n"
+"    }\n"
+"}\n"
+"\n"
+"static inline float preview_f32(channel_f32_t* c, size_t offset) {\n"
+"    return c->data[(c->read_index + offset) % c->max_size];\n"
+"}\n"
+"\n"
+"typedef struct channel_f64 {\n"
+"    volatile size_t read_index;\n"
+"    volatile size_t write_index;\n"
+"    volatile bool full;\n"
+"    size_t max_size;\n"
+"    double* data;\n"
+"} channel_f64_t;\n"
+"\n"
+"static inline void init_f64(channel_f64_t* c, size_t sz) {\n"
+"    c->read_index = 0;\n"
+"    c->write_index = 0;\n"
+"    c->full = false;\n"
+"    c->max_size = sz;\n"
+"    c->data = (double*)malloc(sz * sizeof(double));\n"
+"}\n"
+"\n"
+"static inline size_t size_f64(channel_f64_t* c) {\n"
+"    if (c->full) {\n"
+"        return c->max_size;\n"
+"    }\n"
+"    return (c->max_size + c->write_index - c->read_index) % c->max_size;\n"
+"}\n"
+"\n"
+"static inline size_t free_f64(channel_f64_t* c) {\n"
+"    return c->max_size - size_f64(c);\n"
+"}\n"
+"\n"
+"static inline double read_f64(channel_f64_t* c) {\n"
+"    double element = c->data[c->read_index];\n"
+"    if (c->read_index == (c->max_size - 1)) {\n"
+"        c->read_index = 0;\n"
+"    }\n"
+"    else {\n"
+"        ++(c->read_index);\n"
+"    }\n"
+"    if (c->full && (c->read_index != c->write_index)) {\n"
+"        c->full = false;\n"
+"    }\n"
+"    return element;\n"
+"}\n"
+"\n"
+"static inline void write_f64(channel_f64_t* c, double t) {\n"
+"    c->data[c->write_index] = t;\n"
+"    if (c->write_index == (c->max_size - 1)) {\n"
+"        c->write_index = 0;\n"
+"    }\n"
+"    else {\n"
+"        ++(c->write_index);\n"
+"    }\n"
+"    if (c->read_index == c->write_index) {\n"
+"        c->full = true;\n"
+"    }\n"
+"}\n"
+"\n"
+"static inline double preview_f64(channel_f64_t* c, size_t offset) {\n"
+"    return c->data[(c->read_index + offset) % c->max_size];\n"
+"}\n"
 "#endif";
 
-std::string control_chan_impl;
-
 std::pair<ABI_stdc::Header, ABI_stdc::Source>
-ABI_stdc::generate_channel_code(bool cntrl_chan)
+ABI_stdc::generate_channel_code(void)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
     std::filesystem::path path{ c->get_target_dir() };
     path /= "channel.h";
@@ -496,17 +610,11 @@ ABI_stdc::generate_channel_code(bool cntrl_chan)
 	}
 	output_file << c_buffer_impl;
 
-	// only create control channel class if required
-	if (cntrl_chan) {
-		output_file << "\n\n" << control_chan_impl;
-	}
-
 	output_file.close();
 
     return std::make_pair("channel.h", "");
 }
 
-// not covering float, bool and string types....
 static std::string translate_channel(std::string type) {
 	if (type == "char") {
 		return "s8";
@@ -526,19 +634,29 @@ static std::string translate_channel(std::string type) {
 	else if (type == "unsigned int") {
 		return "u32";
 	}
-	else if (type == "long") {
+	else if (type == "long long") {
 		return "s64";
 	}
-	else if (type == "unsigned long") {
+	else if (type == "unsigned long long") {
 		return "u64";
 	}
+	else if (type == "bool") {
+		return "u8";
+	}
+	else if (type == "float") {
+		return "f32";
+	}
+	else if (type == "double") {
+		return "f64";
+	}
 	else {
-		return "s32";
+		/* unknown type */
+		throw Code_Generation::Code_Generation_Exception{
+			"No stdc channel implementation for token type '" + type + "'." };
 	}
 }
 
 static std::map<std::string, std::string> name_type_map;
-static bool is_static = false;
 
 std::pair<std::string, ABI_stdc::Impl_Type> ABI_stdc::channel_decl(
 	std::string channel_name,
@@ -549,7 +667,6 @@ std::pair<std::string, ABI_stdc::Impl_Type> ABI_stdc::channel_decl(
 {
 	std::string impl_type = translate_channel(type);
 	name_type_map[channel_name] = impl_type;
-	static_def = is_static;
 
 	std::string decl = prefix + "channel_" + impl_type + "_t ";
 	if (!static_def) {
@@ -557,7 +674,7 @@ std::pair<std::string, ABI_stdc::Impl_Type> ABI_stdc::channel_decl(
 	}
 	decl.append(channel_name);
 	if (static_def) {
-		decl.append("{.read_index = 0, .write_index = 0, .full = false, .max_size = " + size +" }");
+		decl.append(" = {.read_index = 0, .write_index = 0, .full = false, .max_size = " + size + ", .data = NULL}");
 	}
 	decl.append(";\n");
 	return std::make_pair(decl, impl_type);
@@ -571,7 +688,7 @@ std::string ABI_stdc::channel_init(
 	std::string prefix)
 {
 	std::string ret = prefix;
-	if (is_static) {
+	if (Config::getInstance()->get_static_alloc()) {
 		ret.append(channel_name + ".data = ");
 		ret.append("(" + type + "*)malloc(sizeof(" + type + ") * " + sz + ");\n");
 	}
@@ -599,7 +716,7 @@ std::string ABI_stdc::channel_prefetch(
 	std::string channel,
 	std::string offset)
 {
-	return "prefetch_" + name_type_map[channel] + "(_g->" + channel + ", " + offset + ")";
+	return "preview_" + name_type_map[channel] + "(_g->" + channel + ", " + offset + ")";
 }
 
 std::string ABI_stdc::channel_size(
@@ -612,4 +729,13 @@ std::string ABI_stdc::channel_free(
 	std::string channel)
 {
 	return "free_" + name_type_map[channel] + "(_g->" + channel + ")";
+}
+
+
+std::string ABI_stdc::channel_register_read(
+	std::string channel,
+	std::string callback,
+	std::string arg)
+{
+	return "";
 }

@@ -42,6 +42,9 @@ static IR::Actor_Instance* check_instance_and_create(
 	static unsigned instance_count = 0;
 	if (instance_map.count(id) == 0) {
 		// Instance has not been created yet, create and assign.
+		if (!actor_map.contains(cal_class)) {
+			throw Network_Reader::Network_Reader_Exception("Instance " + id + " refers to an unknown actor class: " + cal_class);
+		}
 		IR::Actor_Instance* ret = new IR::Actor_Instance(id, actor_map[cal_class], instance_count++);
 #ifdef DEBUG_READER_ACTORS
 		std::cout << "Creating actor instance " << id <<", referring to actor " << cal_class << std::endl;
@@ -68,18 +71,18 @@ void Network_Reader::read_actors(IR::Dataflow_Network* dpn){
 
 	for (auto it = dpn->get_edges().begin(); it != dpn->get_edges().end(); ++it) {
 
-		std::string src_id = it->get_src_id();
-		std::string dst_id = it->get_dst_id();
+		std::string src_id = (*it)->get_src_id();
+		std::string dst_id = (*it)->get_dst_id();
 
-		std::string src_str = src_id + "$" + it->get_src_port();
-		std::string dst_str = dst_id + "$" + it->get_dst_port();
+		std::string src_str = src_id + "$" + (*it)->get_src_port();
+		std::string dst_str = dst_id + "$" + (*it)->get_dst_port();
 
 		if (found_instance_srcport.find(src_str) != found_instance_srcport.end()) {
 			/* This port of this instance is already connected, this is not allowed by
 			 * this model. We assume point-to-point connections and not multi-reader ports.
 			 * This can be supported by adding further connections and ports automatically.
 			 */
-			throw Network_Reader_Exception("Multi-Reader Ports are not supported currently: " + src_id + "." + it->get_src_port());
+			throw Network_Reader_Exception("Multi-Reader Ports are not supported currently: " + src_id + "." + (*it)->get_src_port());
 		}
 		else {
 			found_instance_srcport.insert(src_str);
@@ -90,34 +93,42 @@ void Network_Reader::read_actors(IR::Dataflow_Network* dpn){
 			 * this mode. We assume point-to-point connections and not multi-writer connections.
 			 * This is a source of non-determinism and cannot be supported easily.
 			 */
-			throw Network_Reader_Exception{ "Multi-Writer Ports are not supported: " + dst_id + "." + it->get_dst_port() };
+			throw Network_Reader_Exception{ "Multi-Writer Ports are not supported: " + dst_id + "." + (*it)->get_dst_port() };
 		}
 		else {
 			found_instance_dstport.insert(dst_str);
 		}
 
-		std::string src_class = dpn->get_id_class_map()[src_id];
-		std::string dst_class = dpn->get_id_class_map()[dst_id];
+		std::map<std::string, std::string>& id_class_map = dpn->get_id_class_map();
+		if (!id_class_map.contains(src_id)) {
+			throw Network_Reader_Exception("Edge references an unknown source instance id: " + src_id);
+		}
+		if (!id_class_map.contains(dst_id)) {
+			throw Network_Reader_Exception("Edge references an unknown destination instance id: " + dst_id);
+		}
+
+		std::string src_class = id_class_map[src_id];
+		std::string dst_class = id_class_map[dst_id];
 
 		IR::Actor_Instance* src = check_instance_and_create(dpn, src_id, src_class);
 		IR::Actor_Instance* dst = check_instance_and_create(dpn, dst_id, dst_class);
 
-		if (it->get_source() == nullptr) {
-			it->set_source(src);
-			src->add_out_edge(&(*it));
+		if ((*it)->get_source() == nullptr) {
+			(*it)->set_source(src);
+			src->add_out_edge(*it);
 		}
 		else {
-			if (it->get_source() != src) {
+			if ((*it)->get_source() != src) {
 				throw Network_Reader_Exception("Found corrupted edge definition.");
 			}
 		}
-		if (it->get_sink() == nullptr) {
-			it->set_sink(dst);
-			dst->add_in_edge(&(*it));
+		if ((*it)->get_sink() == nullptr) {
+			(*it)->set_sink(dst);
+			dst->add_in_edge(*it);
 		}
 		else {
 			/* Only a sanity check, shouldn't happen if the network is correct. */
-			if (it->get_sink() != dst) {
+			if ((*it)->get_sink() != dst) {
 				throw Network_Reader_Exception("Found corrupted edge definition.");
 			}
 		}

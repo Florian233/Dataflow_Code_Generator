@@ -30,7 +30,9 @@ namespace Scheduling {
 		std::map<std::string, std::vector< Channel_Schedule_Data>>& actions,
 		std::map<std::string, std::string> replacements,
 		unsigned scheduling_loop_bound,
-		bool no_else = false);
+		bool no_else = false,
+		bool is_source = false,
+		bool is_sink = false);
 
 	/* Generate a global scheduler based on the mapping stored in the IR of the actor instances
 	 * and the Configuration.

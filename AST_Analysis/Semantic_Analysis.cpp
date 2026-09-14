@@ -222,12 +222,13 @@ static void analyse_expression(
 	}
 	else if (dynamic_cast<AST::ListComprehension*>(expression) != nullptr) {
 		auto l = dynamic_cast<AST::ListComprehension*>(expression);
-		
+
+		std::map<SymbolName, NameType> local_symbols = symbols;
 		for (auto gen : l->generators) {
-			analyse_generator(gen, symbols, parametercount);
+			analyse_generator(gen, local_symbols, parametercount);
 		}
 		for (auto expr : l->expressions) {
-			analyse_expression(expr, symbols, parametercount);
+			analyse_expression(expr, local_symbols, parametercount);
 		}
 	}
 	else if (dynamic_cast<AST::PortPreview*>(expression) != nullptr) {

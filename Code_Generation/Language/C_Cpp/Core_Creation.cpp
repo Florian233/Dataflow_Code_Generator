@@ -9,6 +9,7 @@
 #include "ABI/abi.hpp"
 #include <iostream>
 #include "Converter_RVC_Cpp.hpp"
+#include "ABI/RTOS/RTOS_Core_Sched.hpp"
 
 /* Map each channel to the concrete channel implementation that is used for this channel. */
 static std::map<std::string, std::string> channel_impl_map;
@@ -28,7 +29,7 @@ static std::string generate_actor_constructor_parameters(
 	std::map<std::string, std::string> default_params)
 {
 	std::string result;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	if (c->get_target_language() == Target_Language::c) {
 		result.append("\n\t\t.actor_name = ");
@@ -87,6 +88,9 @@ static std::string determine_port_type(
 	std::string port)
 {
 	std::string res;
+	if ((inst == nullptr) || (inst->get_ast() == nullptr) || (inst->get_ast()->actor == nullptr)) {
+		return res;
+	}
 	for (auto in : inst->get_ast()->actor->inports) {
 		if (in->name.name == port) {
 			res = Converter_RVC_Cpp::convert_type(&in->type, "", inst->get_const_map());
@@ -107,19 +111,26 @@ static std::string generate_channels(
 	Mapping::Mapping_Data* map_data)
 {
 	std::string result;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	for (auto it = dpn->get_edges().begin();
 		it != dpn->get_edges().end(); ++it)
 	{
-		IR::Actor_Instance_Base* source = it->get_source();
-		IR::Actor_Instance_Base* sink = it->get_sink();
-		if (it->is_deleted()) {
+		IR::Actor_Instance_Base* source = (*it)->get_source();
+		IR::Actor_Instance_Base* sink = (*it)->get_sink();
+		if ((*it)->is_deleted()) {
 			continue;
+		}
+
+		if ((source == nullptr) || (sink == nullptr)) {
+			throw Converter_Exception{
+				"Channel generation detected an edge with an unconnected port: "
+				+ (*it)->get_src_id() + "." + (*it)->get_src_port() + " -> "
+				+ (*it)->get_dst_id() + "." + (*it)->get_dst_port() };
 		}
 
 		std::string name;
 
-		name = it->get_src_id() + "_" + it->get_src_port() + "_" + it->get_dst_id() + "_" + it->get_dst_port();
+		name = (*it)->get_src_id() + "_" + (*it)->get_src_port() + "_" + (*it)->get_dst_id() + "_" + (*it)->get_dst_port();
 
 		if (channel_impl_map.contains(name)) {
 			//just a sanity check, this cannot happen I think
@@ -127,29 +138,29 @@ static std::string generate_channels(
 			exit(5);
 		}
 
-		std::string typeSource = determine_port_type(source, it->get_src_port());
-		std::string typeSink = determine_port_type(sink, it->get_dst_port());
+		std::string typeSource = determine_port_type(source, (*it)->get_src_port());
+		std::string typeSink = determine_port_type(sink, (*it)->get_dst_port());
 
 		if (typeSource != typeSink) {
 #if 0
 			throw Code_Generation::Code_Generation_Exception{
-				"Types of " + it->get_source()->get_name() + "." + it->get_src_port()
-				+ " and " + it->get_sink()->get_name() + "." + it->get_dst_port() + " don't match."};
+				"Types of " + (*it)->get_source()->get_name() + "." + (*it)->get_src_port()
+				+ " and " + (*it)->get_sink()->get_name() + "." + (*it)->get_dst_port() + " don't match."};
 #else
-			std::cout << "WARNING: Types of " + it->get_source()->get_name() + "." + it->get_src_port()
-				+ " and " + it->get_sink()->get_name() + "." + it->get_dst_port() + " don't match.\n";
+			std::cout << "WARNING: Types of " + (*it)->get_source()->get_name() + "." + (*it)->get_src_port()
+				+ " and " + (*it)->get_sink()->get_name() + "." + (*it)->get_dst_port() + " don't match.\n";
 #endif
 		}
-		actorport_channel_map[it->get_source()->get_name() + "_" + it->get_src_port()] = name;
-		actorport_channel_map[it->get_sink()->get_name() + "_" + it->get_dst_port()] = name;
+		actorport_channel_map[(*it)->get_source()->get_name() + "_" + (*it)->get_src_port()] = name;
+		actorport_channel_map[(*it)->get_sink()->get_name() + "_" + (*it)->get_dst_port()] = name;
 
 		channel_type_map[name] = typeSource;
 		std::string chan_sz;
-		if (it->get_specified_size() == c->get_FIFO_size()) {
+		if ((*it)->get_specified_size() == c->get_FIFO_size()) {
 			 chan_sz = "CHANNEL_SIZE";
 		}
 		else {
-			chan_sz = std::to_string(it->get_specified_size());
+			chan_sz = std::to_string((*it)->get_specified_size());
 		}
 		channel_size_map[name] = chan_sz;
 
@@ -172,7 +183,7 @@ static std::string generate_actor_instances(
 	std::map<std::string, std::vector<std::string>> param_order_map)
 {
 	std::string result;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	for (auto it = dpn->get_actor_instances().begin();
 		it != dpn->get_actor_instances().end(); ++it)
@@ -184,7 +195,7 @@ static std::string generate_actor_instances(
 			continue;
 		}
 
-		std::string t = (*it)->get_identifier();
+		std::string t = c->get_globals_prefix() + (*it)->get_identifier();
 		if (c->get_target_language() == Target_Language::c) {
 			t.append("_t");
 		}
@@ -197,7 +208,12 @@ static std::string generate_actor_instances(
 		actorname_instance_map[(*it)->get_name()] = (*it);
 
 		if (c->get_static_alloc()) {
-			t.append("{");
+			if (c->get_target_language() == Target_Language::c) {
+				t.append(" = {");
+			}
+			else {
+				t.append("{");
+			}
 			t.append(generate_actor_constructor_parameters((*it)->get_name(), true, param_order_map[(*it)->get_identifier()], default_param_maps[(*it)->get_identifier()]));
 			t.append("}");
 		}
@@ -230,14 +246,14 @@ static std::string generate_main(
 	std::map<std::string, std::vector<std::string>> param_order_map)
 {
 	std::string result;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
-	result.append("int main(int argc, char* argv[]) {\n");
+	result.append("int " + c->get_globals_prefix() + "main(int argc, char* argv[]) {\n");
 	if (c->get_orcc_compat()) {
 		result.append("\tparse_command_line_input(argc, argv);\n");
 	}
 
-	if (!c->get_static_alloc()) {
+	if (!c->get_static_alloc() || c->get_target_language() == Target_Language::c) {
 		//initialize channels
 		for (auto it = channel_impl_map.begin(); it != channel_impl_map.end(); ++it) {
 			std::string tmp;
@@ -251,7 +267,7 @@ static std::string generate_main(
 		if (c->get_target_language() == Target_Language::cpp) {
 			if (!c->get_static_alloc()) {
 				result.append("\t" + it->first + " = new ");
-				result.append(it->second + "(");
+				result.append(c->get_globals_prefix() + it->second + "(");
 				result.append(generate_actor_constructor_parameters(it->first, false, param_order_map[it->second], default_param_maps[it->second]));
 				result.append(");\n");
 				result.append("\t" + it->first + "->initialize();\n");
@@ -263,14 +279,14 @@ static std::string generate_main(
 		else {
 			if (!c->get_static_alloc()) {
 				std::string tmp;
-				std::string type = it->second + "_t";
+				std::string type = c->get_globals_prefix() + it->second + "_t";
 				ABI_ALLOC(c, tmp, it->first, "sizeof(" + type + ")", type, "\t");
 				result.append(tmp);
 				result.append("\t*" + it->first + " = ("+type+"){" + generate_actor_constructor_parameters(it->first, false, param_order_map[it->second], default_param_maps[it->second]) + "}; \n");
-				result.append("\t" + it->second + "_initialize(" + it->first + ");\n");
+				result.append("\t" + c->get_globals_prefix() + it->second + "_initialize(" + c->get_globals_prefix() + it->first + ");\n");
 			}
 			else {
-				result.append("\t" + it->second + "_initialize(&" + it->first + ");\n");
+				result.append("\t" + c->get_globals_prefix() + it->second + "_initialize(&" + c->get_globals_prefix() + it->first + ");\n");
 			}
 		}
 	}
@@ -331,49 +347,55 @@ Code_Generation_C_Cpp::generate_core(
 	std::cout << "Main Generation." << std::endl;
 #endif
 
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	std::string code{};
 
-	if (map_data->actor_sharing) {
-		ABI_ATOMIC_HEADER(c, code);
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		code = generate_rtos_main(dpn, opt_data1, opt_data2, map_data, includes, schedulable_instances, default_param_maps, param_order_map);
 	}
-	if (!c->get_omp_tasking()) {
-		std::string tmp;
-		ABI_THREAD_HEADER(c, tmp);
-		code.append(tmp);
-	}
-	if (c->get_list_scheduling()) {
-		if (c->get_target_language() == Target_Language::c) {
-			std::cout << "List scheduling not implemented for C code generation!" << std::endl;
+	else {
+
+		if (map_data->actor_sharing) {
+			ABI_ATOMIC_HEADER(c, code);
 		}
-		code.append("#include <vector>\n");
+		if (!c->get_omp_tasking()) {
+			std::string tmp;
+			ABI_THREAD_HEADER(c, tmp);
+			code.append(tmp);
+		}
+		if (c->get_list_scheduling()) {
+			if (c->get_target_language() == Target_Language::c) {
+				std::cout << "List scheduling not implemented for C code generation!" << std::endl;
+			}
+			code.append("#include <vector>\n");
+		}
+		{
+			std::string tmp;
+			ABI_ALLOC_HEADER(c, tmp);
+			code.append(tmp);
+		}
+
+		code.append("\n#define CHANNEL_SIZE " + std::to_string(c->get_FIFO_size()) + "\n");
+		code.append("\n//#define PRINT_FIRINGS\n\n");
+
+		std::string include_code;
+		for (auto t : includes) {
+			include_code.append("#include \"" + t + "\"\n");
+		}
+
+		code.append(include_code);
+
+		code.append("\n\n");
+		code.append(generate_channels(dpn, opt_data1, opt_data2, map_data));
+		code.append("\n\n");
+		code.append(generate_actor_instances(dpn, opt_data1, opt_data2, map_data, default_param_maps, param_order_map));
+		code.append("\n\n");
+		code.append(Scheduling::generate_global_scheduler(dpn, opt_data1, opt_data2, map_data,
+			global_scheduling_routines, schedulable_instances));
+		code.append("\n\n");
+		code.append(generate_main(dpn, opt_data1, opt_data2, map_data, schedulable_instances, default_param_maps, param_order_map));
 	}
-	{
-		std::string tmp;
-		ABI_ALLOC_HEADER(c, tmp);
-		code.append(tmp);
-	}
-
-	code.append("\n#define CHANNEL_SIZE " + std::to_string(c->get_FIFO_size()) + "\n");
-	code.append("\n//#define PRINT_FIRINGS\n\n");
-
-	std::string include_code;
-	for (auto t : includes) {
-		include_code.append("#include \"" + t + "\"\n");
-	}
-
-	code.append(include_code);
-
-	code.append("\n\n");
-	code.append(generate_channels(dpn, opt_data1, opt_data2, map_data));
-	code.append("\n\n");
-	code.append(generate_actor_instances(dpn, opt_data1, opt_data2, map_data, default_param_maps, param_order_map));
-	code.append("\n\n");
-	code.append(Scheduling::generate_global_scheduler(dpn, opt_data1, opt_data2, map_data,
-		global_scheduling_routines, schedulable_instances));
-	code.append("\n\n");
-	code.append(generate_main(dpn, opt_data1, opt_data2, map_data, schedulable_instances, default_param_maps, param_order_map));
 
 	std::filesystem::path path{ c->get_target_dir() };
 	std::string filename;

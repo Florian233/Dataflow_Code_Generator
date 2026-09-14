@@ -20,8 +20,14 @@ namespace Scheduling {
 		std::vector<std::string>& sorted_actors);
 	void topology_sort_inst(
 		std::set<IR::Actor_Instance_Base*>& actors,
-		IR::Dataflow_Network* dpn,
 		std::vector<IR::Actor_Instance_Base*>& sorted_actors);
+
+	void determine_connected_clusters(
+		const std::set<IR::Actor_Instance_Base*>& actors,
+		std::vector<std::vector<IR::Actor_Instance_Base*>>& clusters);
+
+	bool is_connected(
+		const std::set<IR::Actor_Instance_Base*>& actors);
 
 	/* Find all actor instances that are assigned to a specific core. 
 	 * The function returns the result in list.
@@ -78,7 +84,7 @@ namespace Scheduling {
 				if (str1 == it->action_high) {
 					if ((str2 == it->action_low)
 						|| ((str2.find(it->action_low) == 0)
-							&& (str2[it->action_low.size() == '_'])))
+							&& (str2[it->action_low.size()] == '_')))
 					{
 						return true;
 					}
@@ -98,14 +104,14 @@ namespace Scheduling {
 				{
 					if ((str2 == it->action_low)
 						|| ((str2.find(it->action_low) == 0)
-							&& (str2[it->action_low.size() == '_'])))
+							&& (str2[it->action_low.size()] == '_')))
 					{
 						return true;
 					}
 				}
 				//str2 > str1
 				else if ((str2.find(it->action_high) == 0)
-					&& (str2[it->action_high.size() == '_']))
+					&& (str2[it->action_high.size()] == '_'))
 				{
 					if ((str1 == it->action_low)
 						|| ((str1.find(it->action_low) == 0)
@@ -115,7 +121,7 @@ namespace Scheduling {
 					}
 				}
 			}
-			return true;
+			return false;
 		}
 	};
 

@@ -198,7 +198,7 @@ std::string parse_command_line_input_function_c =
 
 
 std::pair<std::string, std::string> generate_ORCC_compatibility_layer(std::string path) {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	{
 		std::filesystem::path tmp{ path };
 		tmp /= "options.h";

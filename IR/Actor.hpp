@@ -21,7 +21,6 @@ namespace IR {
 	} FSM_Entry;
 
 	/* Priority releation between two actions action_high has higher priority than action_low.
-	 * No transitivity considered!
 	 */
 	typedef struct {
 		std::string action_high;
@@ -41,7 +40,7 @@ namespace IR {
 		/* Multiple entries for the same state transition if it can be caused by multiple actions! */
 		std::vector<FSM_Entry> fsm;
 		std::string initial_state;
-		/* Also add transitive closure! This is required to simplify sorting. */
+		/* Transitive closure is added by parse_priorities(). This is required to simplify sorting. */
 		std::vector<Priority_Entry> priorities;
 
 		std::vector< Buffer_Access > in_buffers;

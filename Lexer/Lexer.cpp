@@ -21,7 +21,7 @@ static bool is_letter(unsigned char c) {
 }
 
 static bool is_whitespace(unsigned char c) {
-	return (std::isspace(c) != 0);
+	return (std::isspace(static_cast<unsigned char>(c)) != 0);
 }
 
 static bool is_literal(unsigned char c) {
@@ -171,6 +171,7 @@ static bool is_keyword(std::string s) {
 		(s == "type") ||
 		(s == "size") ||
 		(s == "unit") ||
+		(s == "String") ||
 		(s == "bool"))
 	{
 		return true;
@@ -197,16 +198,15 @@ bool Lexer::Lexer::skip_comment(void)
 		return false;
 	}
 	else if (str[tmp_index] == '*') {
-		/* skip start of comment */
-		index += 1;
-		character += 1;
+		index += 2;
+		character += 2;
 
-		if (index == max_index) {
+		if (index > max_index) {
 			index = max_index + 1;
 			return false;
 		}
 
-		bool prev_star = true;
+		bool prev_star = false;
 
 		while (index <= max_index) {
 			if (str[index] == '/' && prev_star) {
@@ -490,6 +490,10 @@ Lexer::Token Lexer::Lexer::read_delimiter2(
 
 Lexer::Token Lexer::Lexer::next(void)
 {
+	if (index >= str.size()) {
+		return Token{ .str = END };
+	}
+
 	find_next_char();
 
 	//no tokens to read anymore

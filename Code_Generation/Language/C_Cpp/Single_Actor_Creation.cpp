@@ -12,6 +12,7 @@
 #include <filesystem>
 #include "ABI/abi.hpp"
 #include <iostream>
+#include "ABI/RTOS/RTOS_Core_Sched.hpp"
 
 static std::pair<std::string, std::string> class_variable_generation(
 	IR::Actor* actor,
@@ -24,17 +25,18 @@ static std::pair<std::string, std::string> class_variable_generation(
 	std::string prefix,
 	std::map<std::string, std::string>& replacements,
 	std::string& constructorcode,
-	std::map<std::string, std::string>& defaults)
+	std::map<std::string, std::string>& defaults,
+	std::string name)
 {
 	std::string ret;
 	std::string const_ret;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	for (auto it = actor->get_ast()->actor->vars.begin();
 		it != actor->get_ast()->actor->vars.end(); ++it)
 	{
 		auto tmp = Converter_RVC_Cpp::convert_vardef(*it, prefix, (c->get_target_language() == Target_Language::c), replacements,
-			actor->get_const_map());
+			actor->get_const_map(), (c->get_target_ABI() == Target_ABI::rtos));
 		constructorcode.append(tmp.second);
 
 		if ((*it)->constassign) {
@@ -44,7 +46,7 @@ static std::pair<std::string, std::string> class_variable_generation(
 			ret.append(tmp.first);
 		}
 
-		if ((c->get_target_language() == Target_Language::c) && !(*it)->constassign) {
+		if ((c->get_target_ABI() != Target_ABI::rtos) && (c->get_target_language() == Target_Language::c) && !(*it)->constassign) {
 			replacements[(*it)->name.name] = "_g->" + (*it)->name.name;
 		}
 	}
@@ -57,10 +59,15 @@ static std::pair<std::string, std::string> class_variable_generation(
 		auto tmp = Converter_RVC_Cpp::convert_actorparam(*it, prefix, actor->get_const_map());
 		constructor_parameter_name_type_map[(*it)->name.name] = Converter_RVC_Cpp::convert_type(&(*it)->type,"", actor->get_const_map());
 		defaults[(*it)->name.name] = tmp.second;
-		parameters.append(tmp.first);
 
+		std::string x = tmp.first;
+		if (c->get_target_ABI() == Target_ABI::rtos) {
+			x = "static " + x;
+		}
 
-		if (c->get_target_language() == Target_Language::c) {
+		parameters.append(x);
+
+		if ((c->get_target_ABI() != Target_ABI::rtos) && (c->get_target_language() == Target_Language::c)) {
 			replacements[(*it)->name.name] = "_g->" + (*it)->name.name;
 		}
 	}
@@ -69,7 +76,10 @@ static std::pair<std::string, std::string> class_variable_generation(
 	}
 	ret.append(prefix + "// Actor Parameters\n");
 	ret.append(parameters);
-	if (c->get_target_language() == Target_Language::cpp) {
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		ret.append(prefix + "static const char* actor_name =\"" + name + "\";\n");
+	}
+	else if (c->get_target_language() == Target_Language::cpp) {
 		ret.append(prefix + "std::string actor_name;\n");
 	}
 	else {
@@ -121,33 +131,108 @@ static std::pair<std::string, std::string> class_variable_generation(
 }
 
 static std::string constructor_generation(
-	IR::Actor* actor,
+	IR::Actor_Instance* actor,
 	Optimization::Optimization_Data_Phase1* opt_data1,
 	Optimization::Optimization_Data_Phase2* opt_data2,
 	Mapping::Mapping_Data* map_data,
 	std::map<std::string, std::string>& constructor_parameter_name_type_map,
 	std::vector<std::string>& param_order,
 	std::string class_name,
-	std::string constructor_code)
+	std::string constructor_code,
+	std::map<std::string, std::vector< Scheduling::Channel_Schedule_Data>>& data)
 {
 	std::string ret;
 	std::string body;
+	Config* c = Config::getInstance();
 
-	ret = "\t" + class_name + "(std::string _n";
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		ret = "void ";
+	}
+
+	ret += class_name + "(";
+	if (c->get_target_ABI() != Target_ABI::rtos) {
+		ret = "\t" + ret;
+		ret.append("std::string _n");
+	}
 
 	for (auto it = constructor_parameter_name_type_map.begin();
 		it != constructor_parameter_name_type_map.end(); ++it)
 	{
-		ret.append(", ");
+		if ((c->get_target_ABI() != Target_ABI::rtos) || (it != constructor_parameter_name_type_map.begin())) {
+			ret.append(", ");
+		}
 		ret.append(it->second + " _" + it->first);
-		body.append("\t\t" + it->first + " = _" + it->first + ";\n");
+		if (c->get_target_ABI() != Target_ABI::rtos) {
+			body.append("\t");
+		}
+		body.append("\t" + it->first + " = _" + it->first + ";\n");
 		param_order.push_back(it->first);
+
 	}
-	ret.append(") {\n");
-	ret.append("\t\tactor_name = _n;\n");
+	ret.append(")");
+	rtos_register_actor_globals(ret + ";\n");
+	ret.append("{\n");
 	ret.append(body);
 	ret.append(constructor_code);
-	ret.append("\t};\n");
+
+	std::string abi_code;
+	ABI_ADD_CONSTRUCTOR(c, abi_code, class_name);
+	ret.append(abi_code);
+
+	if (c->get_target_ABI() != Target_ABI::rtos) {
+		ret.append("\t\tactor_name = _n;\n");
+	}
+	else {
+		unsigned arg = 0;
+		unsigned feedback_arg = 1000;
+		for (auto inp : actor->get_in_edges()) {
+			std::string x;
+			if (inp->get_feedback()) {
+				ABI_CHANNEL_REG_READ(c, x, inp->get_dst_port(), "schedcheck", std::to_string(feedback_arg));
+			}
+			else {
+				ABI_CHANNEL_REG_READ(c, x, inp->get_dst_port(), "schedcheck", std::to_string(arg));
+			}
+			ret.append("\t"+ x + ";\n");
+			for (auto it = data.begin(); it != data.end(); ++it) {
+				for (auto s = it->second.begin(); s != it->second.end(); ++s) {
+					if (s->in && (s->channel_name == inp->get_dst_port())) {
+						if (inp->get_feedback()) {
+							s->arg = feedback_arg;
+						}
+						else {
+							s->arg = arg;
+						}
+					}
+				}
+			}
+
+			if (inp->get_feedback()) {
+				++feedback_arg;
+			}
+			else {
+				++arg;
+			}
+		}
+		for (auto outp : actor->get_out_edges()) {
+			if (!outp->get_feedback()) {
+				continue;
+			}
+			for (auto it = data.begin(); it != data.end(); ++it) {
+				for (auto s = it->second.begin(); s != it->second.end(); ++s) {
+					if (!s->in && (s->channel_name == outp->get_src_port())) {
+						s->arg = 1000;
+					}
+				}
+			}
+		}
+	}
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		ret.append("}\n");
+	}
+	else {
+		ret.append("\t};\n");
+	}
 
 	return ret;
 }
@@ -161,13 +246,13 @@ static std::string init_action_generation(
 	std::map<std::string, std::string> port_type_map)
 {
 	std::string ret;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	for (auto it = actor->get_actions().begin();
 		it != actor->get_actions().end(); ++it)
 	{
 		if ((*it)->is_init()) {
-			ret += convert_action(*it, true, false, std::set<std::string>(), std::set<std::string>(), prefix, replacements, data,
+			ret += convert_action(*it, true, std::set<std::string>(), std::set<std::string>(), prefix, replacements, data,
 									class_name, port_type_map, actor->get_const_map());
 		}
 	}
@@ -175,11 +260,21 @@ static std::string init_action_generation(
 	if (ret.empty()) {
 		// no init function present, create an empty one
 		if (c->get_target_language() == Target_Language::c) {
-			ret.append(prefix + "void " + class_name + "_initialize(" + class_name + "_t *_g) {}\n");
+			if (c->get_target_ABI() == Target_ABI::rtos) {
+				ret.append(prefix + "void " + class_name + "_initialize(void) {}\n\n");
+
+			}
+			else {
+				ret.append(prefix + "void " + class_name + "_initialize(" + class_name + "_t *_g) {}\n");
+			}
 		}
 		else {
 			ret.append(prefix + "void initialize(void) {}\n");
 		}
+	}
+
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		rtos_register_actor_globals("void " + class_name + "_initialize(void);\n");
 	}
 
 	return ret;
@@ -217,7 +312,7 @@ static std::string action_generation(
 		 * channel space is available. If this is not the case the tokens are lost.
 		 * Hence, this might only work for SISO actors. Deactivate for now.
 		 */
-		ret += convert_action(*it, false, false,
+		ret += convert_action(*it, false,
 			unused_in_channels, unused_out_channels, prefix, replacements, data, class_name, port_type_map, actor->get_const_map());
 	}
 
@@ -230,7 +325,7 @@ static std::string generate_FSM(
 	std::string class_name,
 	std::string prefix)
 {
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 
 	if (actor->get_fsm().empty()) {
 		return std::string();
@@ -277,7 +372,7 @@ static std::string convert_import(
 		}
 	}
 
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
 	std::string prefix;
 	if (c->get_target_language() == Target_Language::cpp) {
 		prefix = "\t";
@@ -300,7 +395,7 @@ static std::string convert_import(
 			functions += Converter_RVC_Cpp::convert_procedure(p, prefix, r, actor->get_const_map());
 		}
 		for (auto v : u->vars) {
-			functions += Converter_RVC_Cpp::convert_vardef(v, prefix, false, r, actor->get_const_map()).first;
+			functions += Converter_RVC_Cpp::convert_vardef(v, prefix, v->constassign, r, actor->get_const_map(), (c->get_target_ABI() == Target_ABI::rtos)).first;
 		}
 	}
 	return functions;
@@ -341,7 +436,12 @@ Code_Generation_C_Cpp::generate_actor_code(
 #endif
 
 	std::string header_code, source_code;
-	Config* c = c->getInstance();
+	Config* c = Config::getInstance();
+
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		replacements["true"] = "TRUE";
+		replacements["false"] = "FALSE";
+	}
 
 	std::string imports = convert_import(actor, replacements);
 	std::string functions;
@@ -351,25 +451,86 @@ Code_Generation_C_Cpp::generate_actor_code(
 
 	for (auto n : actor->get_ast()->actor->nativefunctions) {
 		natives += Converter_RVC_Cpp::convert_nativefunction(n, "", actor->get_const_map());
+		actor->get_const_map()[n->name.name] = "native";
 	}
 	for (auto n : actor->get_ast()->actor->nativeprocedures) {
 		natives += Converter_RVC_Cpp::convert_nativeprocedure(n, "", actor->get_const_map());
+		actor->get_const_map()[n->name.name] = "native";
 	}
 	auto tmp = class_variable_generation(actor, opt_data1, opt_data2, map_data,
-		constructor_parameter_name_type_map, unused_in_channels, unused_out_channels, "\t", replacements, constructor_code,
-		default_constructor_params);
+		constructor_parameter_name_type_map, unused_in_channels, unused_out_channels, c->get_target_ABI() == Target_ABI::rtos ? "" : "\t", replacements,
+		constructor_code, default_constructor_params, class_name);
 
+	std::string add_args = "";
+	if (c->get_target_ABI() == Target_ABI::stdc) {
+		add_args = c->get_globals_prefix() + class_name + "_t* _g";
+	}
 
 	for (auto f : actor->get_ast()->actor->functions) {
 		functions += Converter_RVC_Cpp::convert_function(f, c->get_target_language() == Target_Language::cpp ? "\t" : "",
-			replacements, actor->get_const_map());
+			replacements, actor->get_const_map(), add_args);
 	}
 	for (auto p : actor->get_ast()->actor->procedures) {
 		functions += Converter_RVC_Cpp::convert_procedure(p, c->get_target_language() == Target_Language::cpp ? "\t" : "",
-			replacements, actor->get_const_map());
+			replacements, actor->get_const_map(), add_args);
 	}
 
-	if (c->get_target_language() == Target_Language::cpp) {
+	if (c->get_target_ABI() == Target_ABI::rtos) {
+		source_name = class_name + ".c";
+
+		source_code.append("#include \"actors.h\"\n");
+		source_code.append(channel_include);
+		source_code.append("\n");
+		replace_all_substrings(tmp.second, "\t", "");
+		source_code.append(tmp.second);
+		source_code.append("\n");
+		source_code.append(generate_FSM(actor, unused_actions, class_name, ""));
+		source_code.append("\n");
+		source_code.append(tmp.first);
+		if (!instance->get_actor()->get_fsm().empty()) {
+			source_code.append("static " + class_name + "_fsm_t state = " + actor->get_initial_state() + ";\n");
+		}
+		source_code.append("//#define PRINT_FIRINGS\n");
+		source_code.append("\n");
+		source_code.append(imports);
+		source_code.append(natives);
+		source_code.append(functions);
+		source_code.append("\n");
+		source_code.append(action_generation(actor, unused_actions,
+			unused_in_channels, unused_out_channels, "", replacements, schedule_data, class_name, port_type_map));
+		source_code.append("\n");
+
+		/* Must be done after action generation otherwise the function name is not defined */
+		for (auto it = instance->get_actor()->get_actions().begin();
+			it != instance->get_actor()->get_actions().end(); ++it)
+		{
+			guard_map[(*it)->get_function_name()] = (*it)->get_ast();
+		}
+
+		// Generates data required by the local scheduler generation but code must be placed at the end
+		std::string constructor = constructor_generation(instance, opt_data1, opt_data2, map_data,
+			constructor_parameter_name_type_map, constructor_parameter_order, c->get_globals_prefix() + class_name, constructor_code, schedule_data);
+
+		source_code.append(Scheduling::generate_local_scheduler(
+			guard_map,
+			actor->get_fsm(), actor->get_priorities(),
+			actor->get_input_classification(),
+			actor->get_output_classification(),
+			"",
+			c->get_globals_prefix() + class_name + "_schedule",
+			"",
+			schedule_data,
+			replacements,
+			scheduling_loop_bound,
+			false,
+			instance->get_source(),
+			instance->get_sink()
+		));
+		source_code.append("\n");
+		std::string i = init_action_generation(actor, "", c->get_globals_prefix() + class_name, replacements, schedule_data, port_type_map);
+		source_code.append(i);
+		source_code.append(constructor);
+	} else if (c->get_target_language() == Target_Language::cpp) {
 		header_name = class_name + ".hpp";
 		header_code.append("#pragma once\n");
 		header_code.append("#include <iostream>\n");
@@ -382,7 +543,7 @@ Code_Generation_C_Cpp::generate_actor_code(
 		header_code.append("\n");
 		header_code.append(natives);
 		header_code.append("\n");
-		header_code.append("class " + class_name + " : public Actor {\n");
+		header_code.append("class " + c->get_globals_prefix() + class_name + " : public Actor {\n");
 		header_code.append("private:\n");
 		header_code.append(imports);
 		header_code.append(functions);
@@ -392,8 +553,8 @@ Code_Generation_C_Cpp::generate_actor_code(
 		header_code.append(action_generation(actor, unused_actions,
 			unused_in_channels, unused_out_channels, "\t", replacements, schedule_data, class_name, port_type_map));
 		header_code.append("public:\n");
-		header_code.append(constructor_generation(actor, opt_data1, opt_data2, map_data,
-			constructor_parameter_name_type_map, constructor_parameter_order, class_name, constructor_code));
+		header_code.append(constructor_generation(instance, opt_data1, opt_data2, map_data,
+			constructor_parameter_name_type_map, constructor_parameter_order, c->get_globals_prefix() + class_name, constructor_code, schedule_data));
 
 		/* Must be done after action generation otherwise the function name is not defined */
 		for (auto it = instance->get_actor()->get_actions().begin();
@@ -419,7 +580,6 @@ Code_Generation_C_Cpp::generate_actor_code(
 		header_code.append("};");
 	}
 	else {
-		//override class name to have it all lower case!
 		header_name = class_name + ".h";
 		source_name = class_name + ".c";
 
@@ -432,18 +592,18 @@ Code_Generation_C_Cpp::generate_actor_code(
 		header_code.append("\n");
 		header_code.append(generate_FSM(actor, unused_actions, class_name, ""));
 		header_code.append("\n");
-		header_code.append("typedef struct " + class_name + " {\n");
+		header_code.append("typedef struct " + c->get_globals_prefix() + class_name + " {\n");
 		header_code.append(tmp.first);
 		if (!instance->get_actor()->get_fsm().empty()) {
 			header_code.append("\t" + class_name + "_fsm_t state;\n");
 		}
-		header_code.append("} " + class_name + "_t;\n\n");
+		header_code.append("} " + c->get_globals_prefix() + class_name + "_t;\n\n");
 		/* Simply call this to fill the parameter order map */
-		constructor_generation(actor, opt_data1, opt_data2, map_data,
-			constructor_parameter_name_type_map, constructor_parameter_order, class_name, constructor_code);
-		header_code.append("void " + class_name + "_schedule(" + class_name + "_t *_g);\n");
+		constructor_generation(instance, opt_data1, opt_data2, map_data,
+			constructor_parameter_name_type_map, constructor_parameter_order, c->get_globals_prefix() + class_name, constructor_code, schedule_data);
+		header_code.append("void " + c->get_globals_prefix() + class_name + "_schedule(" + c->get_globals_prefix() + class_name + "_t *_g);\n");
 		header_code.append("\n");
-		header_code.append("void " + class_name + "_initialize(" + class_name + "_t *_g);\n");
+		header_code.append("void " + c->get_globals_prefix() + class_name + "_initialize(" + c->get_globals_prefix() + class_name + "_t *_g);\n");
 		header_code.append("\n");
 		header_code.append("#endif");
 		source_code = "#include\"" + class_name + ".h\"\n";
@@ -455,14 +615,14 @@ Code_Generation_C_Cpp::generate_actor_code(
 		source_code.append("//#define PRINT_FIRINGS\n");
 		source_code.append("\n");
 		source_code.append(imports);
-		source_code.append(natives);
-		source_code.append(functions);
-		source_code.append("\n");
 		replace_all_substrings(tmp.second, "\t", "");
 		source_code.append(tmp.second);
 		source_code.append("\n");
+		source_code.append(natives);
+		source_code.append(functions);
+		source_code.append("\n");
 		source_code.append(action_generation(actor, unused_actions,
-			unused_in_channels, unused_out_channels, "", replacements, schedule_data, class_name, port_type_map));
+			unused_in_channels, unused_out_channels, "", replacements, schedule_data, c->get_globals_prefix() + class_name, port_type_map));
 		source_code.append("\n");
 
 		/* Must be done after action generation otherwise the function name is not defined */
@@ -479,14 +639,14 @@ Code_Generation_C_Cpp::generate_actor_code(
 			actor->get_input_classification(),
 			actor->get_output_classification(),
 			"",
-			class_name + "_schedule",
-			class_name+"_t* _g",
+			c->get_globals_prefix() + class_name + "_schedule",
+			c->get_globals_prefix() + class_name+"_t* _g",
 			schedule_data,
 			replacements,
 			scheduling_loop_bound
 		));
 		source_code.append("\n");
-		std::string i = init_action_generation(actor, "", class_name, replacements, schedule_data, port_type_map);
+		std::string i = init_action_generation(actor, "", c->get_globals_prefix() + class_name, replacements, schedule_data, port_type_map);
 		if (!actor->get_fsm().empty()) {
 			//Patch init state initialization into init action
 			i.pop_back();
@@ -497,21 +657,23 @@ Code_Generation_C_Cpp::generate_actor_code(
 		source_code.append(i);
 	}
 
-	std::filesystem::path path_header{ c->get_target_dir() };
-	path_header /= header_name;
-	std::ofstream output_file_header{ path_header };
-	if (output_file_header.fail()) {
-		throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path_header.string() };
+	if (!header_name.empty() && !header_code.empty()) {
+		std::filesystem::path path_header{ c->get_target_dir() };
+		path_header /= header_name;
+		std::ofstream output_file_header{ path_header };
+		if (output_file_header.fail()) {
+			throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path_header.string() };
+		}
+		output_file_header << header_code;
+		output_file_header.close();
 	}
-	output_file_header << header_code;
-	output_file_header.close();
 
 	if (!source_name.empty() && !source_code.empty()) {
 		std::filesystem::path path_source{ c->get_target_dir() };
 		path_source /= source_name;
 		std::ofstream output_file_source{ path_source };
 		if (output_file_source.fail()) {
-			throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path_header.string() };
+			throw Code_Generation::Code_Generation_Exception{ "Cannot open the file " + path_source.string() };
 		}
 		output_file_source << source_code;
 		output_file_source.close();
