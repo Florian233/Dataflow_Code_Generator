@@ -98,68 +98,66 @@ static void print_actor_classification(
 
 void IR::Actor::classify_actor(void) {
 	Config* c = Config::getInstance();
-	if (fsm.size() == 0) {
-		bool static_in{ true };
-		bool static_out{ true };
-		//check static first, this is the most restrictive, then cyclo static,
-		// dynamic is not checked as it is the default
-		// but it cannot be static if it has a FSM
-		std::map<std::string, unsigned> channel_rate_map;
-		for (auto it = actions.begin(); it != actions.end(); ++it) {
-			if ((*it)->is_init()) {
-				continue;
-			}
-			for (auto c_it = (*it)->get_in_buffers().begin();
-				c_it != (*it)->get_in_buffers().end(); ++c_it)
+	bool static_in{ true };
+	bool static_out{ true };
+	//check static first, this is the most restrictive, then cyclo static,
+	// dynamic is not checked as it is the default
+	// but it cannot be static if it has a FSM
+	std::map<std::string, unsigned> channel_rate_map;
+	for (auto it = actions.begin(); it != actions.end(); ++it) {
+		if ((*it)->is_init()) {
+			continue;
+		}
+		for (auto c_it = (*it)->get_in_buffers().begin();
+			c_it != (*it)->get_in_buffers().end(); ++c_it)
+		{
+			if (channel_rate_map.contains(c_it->buffer_name)
+				&& channel_rate_map[c_it->buffer_name] != c_it->tokenrate)
 			{
-				if (channel_rate_map.contains(c_it->buffer_name)
-					&& channel_rate_map[c_it->buffer_name] != c_it->tokenrate)
-				{
-					static_in = false;
-					break; //not static input
-				}
-				else {
-					channel_rate_map[c_it->buffer_name] = c_it->tokenrate;
-				}
+				static_in = false;
+				break; //not static input
 			}
-			if (!static_in) {
-				break;
+			else {
+				channel_rate_map[c_it->buffer_name] = c_it->tokenrate;
 			}
 		}
-		channel_rate_map.clear();
-		for (auto it = actions.begin(); it != actions.end(); ++it) {
-			if ((*it)->is_init()) {
-				continue;
-			}
-			for (auto c_it = (*it)->get_out_buffers().begin();
-				c_it != (*it)->get_out_buffers().end(); ++c_it)
-			{
-				if (channel_rate_map.contains(c_it->buffer_name)
-					&& channel_rate_map[c_it->buffer_name] != c_it->tokenrate)
-				{
-					static_out = false;
-					break; //not static output
-				}
-				else {
-					channel_rate_map[c_it->buffer_name] = c_it->tokenrate;
-				}
-			}
-			if (!static_out) {
-				break;
-			}
+		if (!static_in) {
+			break;
 		}
-		if (static_in) {
-			input_classification = Actor_Classification::static_rate;
-		}
-		if (static_out) {
-			output_classification = Actor_Classification::static_rate;
-		}
-
-		if (c->get_verbose_classify()) {
-			print_actor_classification(input_classification, output_classification, actor_name);
-		}
-		return;
 	}
+	channel_rate_map.clear();
+	for (auto it = actions.begin(); it != actions.end(); ++it) {
+		if ((*it)->is_init()) {
+			continue;
+		}
+		for (auto c_it = (*it)->get_out_buffers().begin();
+			c_it != (*it)->get_out_buffers().end(); ++c_it)
+		{
+			if (channel_rate_map.contains(c_it->buffer_name)
+				&& channel_rate_map[c_it->buffer_name] != c_it->tokenrate)
+			{
+				static_out = false;
+				break; //not static output
+			}
+			else {
+				channel_rate_map[c_it->buffer_name] = c_it->tokenrate;
+			}
+		}
+		if (!static_out) {
+			break;
+		}
+	}
+	if (static_in) {
+		input_classification = Actor_Classification::static_rate;
+	}
+	if (static_out) {
+		output_classification = Actor_Classification::static_rate;
+	}
+
+	if (c->get_verbose_classify()) {
+		print_actor_classification(input_classification, output_classification, actor_name);
+	}
+	return;
 
 	//Create a map with (action name -> (channel name -> rate)) for input and output
 	std::map<std::string, std::map<std::string, unsigned>> channel_rate_map_in;

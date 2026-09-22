@@ -167,6 +167,9 @@ static std::string constructor_generation(
 		unsigned arg = 0;
 		unsigned feedback_arg = 1000;
 		for (auto inp : actor->get_in_edges()) {
+			if (inp->is_deleted()) {
+				continue;
+			}
 			std::string x;
 			if (inp->get_feedback()) {
 				ABI_CHANNEL_REG_READ(c, x, inp->get_dst_port(), "schedcheck", std::to_string(feedback_arg));
@@ -290,6 +293,23 @@ static std::string action_generation(
 		action_guard[action->name.name] = action;
 		ret += convert_action(&a, false, std::set<std::string>(), std::set<std::string>(), prefix, replacements,
 			sched_data, class_name, port_type_map, actor->get_const_map());
+
+		for (auto in : actor->get_in_edges()) {
+			Scheduling::Channel_Schedule_Data d;
+			d.channel_name = in->get_dst_port();
+			d.arg = 0;
+			d.elements = 1;
+			d.in = true;
+			sched_data[action->name.name].push_back(d);
+		}
+		for (auto out : actor->get_out_edges()) {
+			Scheduling::Channel_Schedule_Data d;
+			d.channel_name = out->get_src_port();
+			d.arg = 0;
+			d.elements = 1;
+			d.in = false;
+			sched_data[action->name.name].push_back(d);
+		}
 	}
 
 	return ret;
@@ -483,6 +503,19 @@ Code_Generation_C_Cpp::generate_composit_actor_code(
 		std::string constructor = constructor_generation(actor, constructor_parameter_name_type_map,
 			constructor_parameter_order, c->get_globals_prefix() + actor->get_class(), constructor_code, sched_data);
 
+		unsigned non_feedback_inputs = 0;
+		unsigned non_feedback_outputs = 0;
+		for (auto in : actor->get_in_edges()) {
+			if (!in->get_feedback()) {
+				++non_feedback_inputs;
+			}
+		}
+		for (auto out : actor->get_out_edges()) {
+			if (!out->get_feedback()) {
+				++non_feedback_outputs;
+			}
+		}
+
 		source_code.append(Scheduling::generate_local_scheduler(
 			action_guard,
 			fsm,
@@ -496,8 +529,8 @@ Code_Generation_C_Cpp::generate_composit_actor_code(
 			replacements,
 			scheduling_loop_bound,
 			true,
-			actor->get_source(),
-			actor->get_sink()
+			actor->get_source() && (non_feedback_inputs == 0),
+			actor->get_sink() && (non_feedback_outputs == 0)
 		));
 		source_code.append("\n");
 		source_code.append(init_action_generation(actor, "", c->get_globals_prefix() + actor->get_class(), replacements, port_type_map, constructor_code));

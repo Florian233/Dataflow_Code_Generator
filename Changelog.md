@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2
+
+### Added
+ * No additions
+
+### Changed
+ * Fixed the actor classification for static actors
+ * Channels for composit actors are now considered properly in RTOS scheduling
+ * RTOS channel doesn't rely on malloc anymore, but uses a static buffer instead
+ * Deleted channels are ignored everywhere in the code generation now 
+
 ## 2.1
 
 ### Added

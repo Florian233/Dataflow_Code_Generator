@@ -135,7 +135,7 @@ static std::string generate_channels(
 
 		channel_type_map[name] = typeSource;
 		std::string chan_sz;
-		if ((*it)->get_specified_size() == c->get_FIFO_size()) {
+		if (((*it)->get_specified_size() == c->get_FIFO_size()) || ((*it)->get_specified_size() == 0)) {
 			chan_sz = "CHANNEL_SIZE";
 		}
 		else {
@@ -148,49 +148,6 @@ static std::string generate_channels(
 
 		channel_impl_map[name] = decl.second;
 		result.append(decl.first);
-	}
-
-	return result;
-}
-
-static std::string generate_actor_instances(
-	IR::Dataflow_Network* dpn,
-	Optimization::Optimization_Data_Phase1* opt_data1,
-	Optimization::Optimization_Data_Phase2* opt_data2,
-	Mapping::Mapping_Data* map_data,
-	std::map<std::string, std::map<std::string, std::string>> default_param_maps,
-	std::map<std::string, std::vector<std::string>> param_order_map)
-{
-	std::string result;
-	Config* c = Config::getInstance();
-
-	for (auto it = dpn->get_actor_instances().begin();
-		it != dpn->get_actor_instances().end(); ++it)
-	{
-		if ((*it)->get_composit_actor() != nullptr) {
-			continue;
-		}
-		if ((*it)->is_deleted()) {
-			continue;
-		}
-
-		std::string t = "static thr_t ";
-		t.append((*it)->get_name());
-
-		// Must happen before the constructor parameters are generated!
-		actorname_instance_map[(*it)->get_name()] = (*it);
-
-
-
-		result.append(t + "_thrid = THR_NUM_INVALID;\n");
-	}
-
-	for (auto it = dpn->get_composit_actors().begin();
-		it != dpn->get_composit_actors().end(); ++it)
-	{
-		std::string t = "static thr_t ";
-		t.append((*it)->get_name());
-		result.append(t + "_thrid = THR_NUM_INVALID;\n");
 	}
 
 	return result;
@@ -451,44 +408,61 @@ std::string generate_rtos_main(
 		code.append("time_t start_time;\n");
 	}
 
-	if ((c->get_rtos_sched_cycles() > 1) && (c->get_cores() > 1)) {
-		unsigned num_sources = 0;
-		unsigned num_actors = 0;
-		for (auto it = dpn->get_actor_instances().begin();
-			it != dpn->get_actor_instances().end(); ++it)
-		{
-			if ((*it)->get_composit_actor() != nullptr) {
-				continue;
-			}
-			if ((*it)->is_deleted()) {
-				continue;
-			}
-			if ((*it)->get_source()) {
-				num_sources++;
-			}
-			else {
-				num_actors++;
-			}
-		}
-		for (auto it = dpn->get_composit_actors().begin();
-			it != dpn->get_composit_actors().end(); ++it)
-		{
-			if ((*it)->get_source()) {
-				num_sources++;
-			}
-			else {
-				num_actors++;
-			}
-		}
 
+	unsigned num_sources = 0;
+	unsigned num_actors = 0;
+	for (auto it = dpn->get_actor_instances().begin();
+		it != dpn->get_actor_instances().end(); ++it)
+	{
+		if ((*it)->get_composit_actor() != nullptr) {
+			continue;
+		}
+		if ((*it)->is_deleted()) {
+			continue;
+		}
+		if ((*it)->get_source()) {
+			num_sources++;
+		}
+		else {
+			num_actors++;
+		}
+	}
+	for (auto it = dpn->get_composit_actors().begin();
+		it != dpn->get_composit_actors().end(); ++it)
+	{
+		if ((*it)->get_source()) {
+			num_sources++;
+		}
+		else {
+			num_actors++;
+		}
+	}
+	if ((c->get_rtos_sched_cycles() > 1) && (c->get_cores() > 1)) {
 		generate_cycle_barrier(num_sources, num_actors);
 		code.append("cycle_barrier_t cycle_barrier;\n");
+	}
+	
+	if (c->get_globals_prefix().empty()) {
+		/* if there is a global prefix it should be defined by higher layer */
+		code.append("unsigned char stackzone[2 * PAGESIZE * " + std::to_string(num_actors + num_sources) + "];\n\n");
+	}
+
+	for (auto it = dpn->get_actor_instances().begin();
+		it != dpn->get_actor_instances().end(); ++it)
+	{
+		if ((*it)->get_composit_actor() != nullptr) {
+			continue;
+		}
+		if ((*it)->is_deleted()) {
+			continue;
+		}
+
+		// Must happen before the constructor parameters are generated!
+		actorname_instance_map[(*it)->get_name()] = (*it);
 	}
 
 	code.append("\n");
 	code.append(generate_channels(dpn, opt_data1, opt_data2, map_data));
-	code.append("\n\n");
-	code.append(generate_actor_instances(dpn, opt_data1, opt_data2, map_data, default_param_maps, param_order_map));
 	code.append("\n\n");
 	code.append(generate_main(dpn, opt_data1, opt_data2, map_data, schedulable_instances, default_param_maps, param_order_map));
 
@@ -537,7 +511,6 @@ static std::string default_local(
 	output.append("static uid_t myself = UID_INVALID;\n\n");
 	output.append("void " + schedule_function_name + "(void) {\n");
 	output.append("\ttls_init(&tls);\n");
-	output.append("\tbool_t first = 1;\n");
 	output.append("\ttls_register(&tls);\n");
 	output.append("\tmyself = get_my_uid();\n");
 	output.append("\tevent_mask(UID_ALL);\n");
@@ -942,21 +915,12 @@ std::string generate_rtos_scheduler(
 		std::string tmp = ABI_rtos::channel_read_notification(x.second);
 		notifications.append("\t" + tmp + ";\n");
 	}
-	std::string first_branch, others_branch;
+	std::string others_branch;
 	for (auto x : outports) {
 		std::string tmp = ABI_rtos::channel_write_notification(x.first);
-		others_branch.append("\t\t" + tmp + ";\n");
-		tmp = ABI_rtos::channel_write_notification_nonotify(x.first);
-		first_branch.append("\t\t" + tmp + ";\n");
+		others_branch.append("\t" + tmp + ";\n");
 	}
-	if (!first_branch.empty()) {
-		notifications.append("\tif (first) {\n");
-		notifications.append(first_branch);
-		notifications.append("\t\tfirst = 0;\n");
-		notifications.append("\t} else {\n");
-		notifications.append(others_branch);
-		notifications.append("\t}\n");
-	}
+	notifications.append(others_branch);
 	if (!outports.empty()) {
 		notifications.append("\tset_my_prio(myprio);\n");
 	}

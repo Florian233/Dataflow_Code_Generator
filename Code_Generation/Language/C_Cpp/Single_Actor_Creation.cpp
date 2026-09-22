@@ -186,6 +186,9 @@ static std::string constructor_generation(
 		unsigned arg = 0;
 		unsigned feedback_arg = 1000;
 		for (auto inp : actor->get_in_edges()) {
+			if (inp->is_deleted()) {
+				continue;
+			}
 			std::string x;
 			if (inp->get_feedback()) {
 				ABI_CHANNEL_REG_READ(c, x, inp->get_dst_port(), "schedcheck", std::to_string(feedback_arg));
@@ -214,6 +217,7 @@ static std::string constructor_generation(
 				++arg;
 			}
 		}
+
 		for (auto outp : actor->get_out_edges()) {
 			if (!outp->get_feedback()) {
 				continue;

@@ -3612,6 +3612,10 @@ static void perform_merge(
 				IR::Edge* n = new IR::Edge{ src_inst, composit, composit_name, portname, e->get_src_id(), e->get_src_port()};
 				auto q = dpn->add_edge(n);
 				composit->add_in_edge(q);
+				if (e->get_feedback()) {
+					n->set_feedback();
+				}
+				n->set_specified_size(e->get_specified_size());
 
 				if (dynamic_cast<IR::Actor_Instance*>(src_inst) != nullptr) {
 					dynamic_cast<IR::Actor_Instance*>(src_inst)->add_out_edge(q);
@@ -3649,6 +3653,10 @@ static void perform_merge(
 				IR::Edge* n = new IR::Edge{ composit, sink_inst , e->get_dst_id(), e->get_dst_port(), composit_name, portname };
 				auto q = dpn->add_edge(n);
 				composit->add_out_edge(q);
+				if (e->get_feedback()) {
+					n->set_feedback();
+				}
+				n->set_specified_size(e->get_specified_size());
 				if (dynamic_cast<IR::Actor_Instance*>(sink_inst) != nullptr) {
 					dynamic_cast<IR::Actor_Instance*>(sink_inst)->add_in_edge(q);
 				}
