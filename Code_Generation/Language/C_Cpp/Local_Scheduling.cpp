@@ -506,7 +506,7 @@ std::string Scheduling::generate_local_scheduler(
 	if (scheduling_loop_bound != 0) {
 		sched_loop.append(prefix + "\tunsigned sched_loops;\n");
 		sched_loop.append(prefix + "\tfor (sched_loops = 0; sched_loops < "
-			+ std::to_string(scheduling_loop_bound / c->get_rtos_sched_cycles()) + "; ++sched_loops) {\n");
+			+ std::to_string(scheduling_loop_bound) + "; ++sched_loops) {\n");
 	}
 	else {
 		sched_loop.append(prefix + "\tfor (;;) {\n");
