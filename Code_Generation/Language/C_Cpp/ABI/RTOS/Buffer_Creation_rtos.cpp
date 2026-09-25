@@ -992,7 +992,7 @@ std::pair<std::string, ABI_rtos::Impl_Type> ABI_rtos::channel_decl(
 	name_type_map[channel_name] = impl_type;
 
 	std::string decl = prefix + "static channel_" + impl_type + "_t ";
-	if (static_def) {
+	if (!static_def) {
 		decl.append("*");
 	}
 	decl.append(channel_name);

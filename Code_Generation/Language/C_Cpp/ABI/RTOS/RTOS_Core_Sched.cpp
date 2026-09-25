@@ -180,8 +180,8 @@ static std::string generate_main(
 
 	//initialize actor instances and call their init function
 	for (auto it = schedulable_instances.begin(); it != schedulable_instances.end(); ++it) {
-		result.append("\t" + c->get_globals_prefix() + it->first + "(" + generate_actor_constructor_parameters(it->first, param_order_map[it->second], default_param_maps[it->second]) + "); \n");
-		result.append("\t" + c->get_globals_prefix() + it->first + "_initialize();\n");
+		result.append("\t" + c->get_globals_prefix() + it->second + "(" + generate_actor_constructor_parameters(it->first, param_order_map[it->second], default_param_maps[it->second]) + "); \n");
+		result.append("\t" + c->get_globals_prefix() + it->second + "_initialize();\n");
 	}
 
 	if ((c->get_deadline() != 0) || (c->get_release() != 0)) {
@@ -213,7 +213,7 @@ static std::string generate_main(
 		result.append("\tthr_attr_init(&tattr);\n");
 		result.append("\ttattr.prio = " + std::to_string((*it)->get_sched_prio()) + ";\n");
 		result.append("\ttattr.affinity = CPUMASK_CPU_TO_MASK(" + std::to_string((*it)->get_mapping()) + ");\n");
-		result.append("\tthr_create(&" + (*it)->get_name() + "_thrid, &tattr, \"" + (*it)->get_name() + "\", " + c->get_globals_prefix() + (*it)->get_name() + "_schedule, 0); \n");
+		result.append("\tthr_create(&" + (*it)->get_name() + "_thrid, &tattr, \"" + (*it)->get_name() + "\", " + c->get_globals_prefix() + (*it)->get_class() + "_schedule, 0); \n");
 		result.append("\n");
 	}
 
